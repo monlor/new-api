@@ -485,6 +485,8 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
 	}
+	common.SetContextKey(c, constant.ContextKeyChannelBillingType, channel.BillingType)
+	common.SetContextKey(c, constant.ContextKeyChannelRatio, channel.GetRatio())
 	return nil
 }
 

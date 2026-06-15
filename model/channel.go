@@ -20,6 +20,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const (
+	ChannelBillingTypeAll              = 0 // No restriction (default)
+	ChannelBillingTypeWalletOnly       = 1 // Wallet/balance only
+	ChannelBillingTypeSubscriptionOnly = 2 // Subscription only
+)
+
 type Channel struct {
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
@@ -54,6 +60,13 @@ type Channel struct {
 	ChannelInfo ChannelInfo `json:"channel_info" gorm:"type:json"`
 
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
+
+	// BillingType restricts which billing source can be used for this channel.
+	// 0 = no restriction, 1 = wallet/balance only, 2 = subscription only.
+	BillingType int `json:"billing_type" gorm:"default:0"`
+	// Ratio is a per-channel billing multiplier applied on top of model and group ratios.
+	// nil or 0 is treated as 1.0 (no adjustment). Values < 1 reduce cost, > 1 increase cost.
+	Ratio *float64 `json:"ratio" gorm:"default:1"`
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
@@ -342,6 +355,13 @@ func (channel *Channel) GetAutoBan() bool {
 	return *channel.AutoBan == 1
 }
 
+func (channel *Channel) GetRatio() float64 {
+	if channel.Ratio == nil {
+		return 1.0
+	}
+	return *channel.Ratio
+}
+
 func (channel *Channel) Save() error {
 	return DB.Save(channel).Error
 }
@@ -562,8 +582,14 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	var err error
-	err = DB.Model(channel).Updates(channel).Error
+	// billing_type can be 0 (subscription_first/default) which GORM's Updates(struct) skips as a zero value.
+	// Run both updates inside one transaction so a partial write cannot leave the row inconsistent.
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(channel).Updates(channel).Error; err != nil {
+			return err
+		}
+		return tx.Model(channel).Update("billing_type", channel.BillingType).Error
+	})
 	if err != nil {
 		return err
 	}

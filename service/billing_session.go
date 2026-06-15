@@ -398,6 +398,26 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
+	// Channel-level billing type takes priority over user preference.
+	if relayInfo.ChannelMeta == nil {
+		common.SysLog("NewBillingSession called without ChannelMeta; channel billing type will be ignored")
+	} else {
+		switch relayInfo.ChannelMeta.ChannelBillingType {
+		case model.ChannelBillingTypeWalletOnly:
+			return tryWallet()
+		case model.ChannelBillingTypeSubscriptionOnly:
+			return trySubscription()
+		}
+	}
+
+	// Token-level billing type takes priority over user preference.
+	switch relayInfo.TokenBillingType {
+	case model.ChannelBillingTypeWalletOnly:
+		return tryWallet()
+	case model.ChannelBillingTypeSubscriptionOnly:
+		return trySubscription()
+	}
+
 	switch pref {
 	case "subscription_only":
 		return trySubscription()

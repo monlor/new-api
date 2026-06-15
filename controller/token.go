@@ -221,6 +221,7 @@ func AddToken(c *gin.Context) {
 		AllowIps:           token.AllowIps,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+		BillingType:        token.BillingType,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -258,6 +259,10 @@ func UpdateToken(c *gin.Context) {
 	}
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
+		return
+	}
+	if token.BillingType < model.ChannelBillingTypeAll || token.BillingType > model.ChannelBillingTypeSubscriptionOnly {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if !token.UnlimitedQuota {
@@ -299,6 +304,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.BillingType = token.BillingType
 	}
 	err = cleanToken.Update()
 	if err != nil {

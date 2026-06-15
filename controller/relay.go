@@ -122,6 +122,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
+	relayInfo.InitChannelMeta(c)
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
@@ -317,6 +318,11 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
 		return nil, newAPIError
+	}
+	// Sync PriceData.ChannelRatio with the actually-selected channel so that
+	// pre-consume, settlement, and usage logs all use the same ratio.
+	if channelRatio, ok := common.GetContextKeyType[float64](c, constant.ContextKeyChannelRatio); ok && channelRatio > 0 {
+		info.PriceData.ChannelRatio = channelRatio
 	}
 	return channel, nil
 }
@@ -584,6 +590,7 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
 			ModelPrice:      relayInfo.PriceData.ModelPrice,
 			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			ChannelRatio:    relayInfo.PriceData.ChannelRatio,
 			ModelRatio:      relayInfo.PriceData.ModelRatio,
 			OtherRatios:     relayInfo.PriceData.OtherRatios,
 			OriginModelName: relayInfo.OriginModelName,

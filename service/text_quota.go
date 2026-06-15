@@ -55,6 +55,8 @@ type textQuotaSummary struct {
 	AudioInputPrice          float64
 	ImageGenerationCallPrice float64
 	ToolCallSurchargeQuota   decimal.Decimal
+	ChannelRatio             float64
+	UpstreamQuota            int // quota before channel ratio
 }
 
 func cacheWriteTokensTotal(summary textQuotaSummary) int {
@@ -143,11 +145,17 @@ func composeTieredTextQuota(relayInfo *relaycommon.RelayInfo, summary textQuotaS
 		return tieredQuota
 	}
 
+	cr := summary.ChannelRatio
+	if cr <= 0 {
+		cr = 1.0
+	}
+
 	if tieredResult != nil {
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-			return int(decimal.NewFromFloat(tieredResult.ActualQuotaBeforeGroup).
-				Mul(decimal.NewFromFloat(snap.GroupRatio)).
-				Add(summary.ToolCallSurchargeQuota).
+			// tieredQuota = ActualQuotaAfterGroup (includes channelRatio from settle.go).
+			// Add surcharge multiplied by the same channelRatio so both costs are treated consistently.
+			return int(decimal.NewFromInt(int64(tieredQuota)).
+				Add(summary.ToolCallSurchargeQuota.Mul(decimal.NewFromFloat(cr))).
 				Round(0).
 				IntPart())
 		}
@@ -306,6 +314,13 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = 1
 	}
 
+	// record channel ratio for later application (after tiered settlement)
+	channelRatio := relayInfo.PriceData.ChannelRatio
+	if channelRatio <= 0 {
+		channelRatio = 1.0
+	}
+	summary.ChannelRatio = channelRatio
+
 	return summary
 }
 
@@ -343,6 +358,22 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredBillingApplied = true
 			tieredResult = tieredRes
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
+		}
+	}
+
+	// apply channel ratio after all quota sources are resolved
+	if tieredBillingApplied {
+		// settle.go already baked channelRatio into ActualQuotaAfterGroup (and composeTieredTextQuota
+		// propagates it for the surcharge case). Record upstream quota for logging by reversing it.
+		if summary.ChannelRatio != 1.0 {
+			summary.UpstreamQuota = int(decimal.NewFromInt(int64(summary.Quota)).
+				Div(decimal.NewFromFloat(summary.ChannelRatio)).Round(0).IntPart())
+		}
+	} else if summary.ChannelRatio != 1.0 {
+		summary.UpstreamQuota = summary.Quota
+		summary.Quota = int(decimal.NewFromInt(int64(summary.Quota)).Mul(decimal.NewFromFloat(summary.ChannelRatio)).Round(0).IntPart())
+		if summary.UpstreamQuota > 0 && summary.Quota == 0 {
+			summary.Quota = 1
 		}
 	}
 
@@ -400,6 +431,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
+	}
+	if summary.ChannelRatio != 1.0 {
+		other["upstream_quota"] = summary.UpstreamQuota
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true
