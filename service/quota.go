@@ -142,7 +142,7 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		UsePrice:     relayInfo.UsePrice,
 		ModelRatio:   modelRatio,
 		GroupRatio:   actualGroupRatio,
-		ChannelRatio: relayInfo.ChannelMeta.ChannelRatio,
+		ChannelRatio: relayInfo.PriceData.ChannelRatio,
 	}
 
 	quota := calculateAudioQuota(quotaInfo)
