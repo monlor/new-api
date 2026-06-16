@@ -282,8 +282,9 @@ export function RechargeFormCard({
                 {hasStandardPaymentMethods ? (
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                     {topupInfo?.pay_methods?.map((method) => {
-                      const minTopup = method.min_topup || 0
-                      const disabled = minTopup > topupAmount
+                      const methodMin = method.min_topup || 0
+                      const effectiveMin = Math.max(methodMin, minTopup)
+                      const disabled = effectiveMin > topupAmount
 
                       const button = (
                         <Button
@@ -313,7 +314,7 @@ export function RechargeFormCard({
                             <TooltipTrigger render={button}></TooltipTrigger>
                             <TooltipContent>
                               {t('Minimum topup amount: {{amount}}', {
-                                amount: minTopup,
+                                amount: effectiveMin,
                               })}
                             </TooltipContent>
                           </Tooltip>
@@ -344,7 +345,7 @@ export function RechargeFormCard({
                     <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                       {waffoPayMethods?.map((method, index) => {
                         const loadingKey = `waffo-${index}`
-                        const waffoMin = waffoMinTopup || 0
+                        const waffoMin = Math.max(waffoMinTopup || 0, minTopup)
                         const belowMin = waffoMin > topupAmount
 
                         const button = (
