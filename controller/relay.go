@@ -197,6 +197,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 
+		// After channel selection ChannelMeta.ChannelBillingType is now correct.
+		// Ensure the billing session (created before channel selection) is
+		// compatible; swap it synchronously if the channel has a hard restriction.
+		if billingErr := service.EnsureBillingSessionForChannel(c, relayInfo, priceData.QuotaToPreConsume); billingErr != nil {
+			logger.LogError(c, billingErr.Error())
+			newAPIError = billingErr
+			break
+		}
+
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -319,11 +328,13 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	if newAPIError != nil {
 		return nil, newAPIError
 	}
-	// Sync PriceData.ChannelRatio with the actually-selected channel so that
-	// pre-consume, settlement, and usage logs all use the same ratio.
-	if channelRatio, ok := common.GetContextKeyType[float64](c, constant.ContextKeyChannelRatio); ok && channelRatio > 0 {
-		info.PriceData.ChannelRatio = channelRatio
-	}
+	// Re-initialize ChannelMeta now that the channel context is fully populated.
+	// The early InitChannelMeta call (before channel selection) sets ChannelMeta
+	// non-nil so getChannel enters this code path, but leaves ChannelBillingType
+	// and ChannelRatio as zero values. This call corrects them.
+	info.InitChannelMeta(c)
+	// Also sync PriceData.ChannelRatio for consistency with other billing paths.
+	info.PriceData.ChannelRatio = info.ChannelMeta.ChannelRatio
 	return channel, nil
 }
 

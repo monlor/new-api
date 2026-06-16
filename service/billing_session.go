@@ -149,6 +149,45 @@ func (s *BillingSession) GetPreConsumedQuota() int {
 	return s.preConsumedQuota
 }
 
+// RefundNow 同步退还所有预扣费，用于计费会话因渠道计费类型冲突需要切换时。
+// 与 Refund 不同，本方法阻塞直到退款完成。
+// 只有资金来源退款失败时才返回错误（此时调用方不得重建会话，否则会造成双重扣款）；
+// 令牌额度和订阅额外预扣的退还失败仅记录日志，与异步 Refund() 保持一致。
+func (s *BillingSession) RefundNow() error {
+	s.mu.Lock()
+	if !s.needsRefundLocked() {
+		s.mu.Unlock()
+		return nil
+	}
+	s.refunded = true
+	funding := s.funding
+	tokenConsumed := s.tokenConsumed
+	extraReserved := s.extraReserved
+	subscriptionId := s.relayInfo.SubscriptionId
+	isPlayground := s.relayInfo.IsPlayground
+	tokenId := s.relayInfo.TokenId
+	tokenKey := s.relayInfo.TokenKey
+	s.mu.Unlock()
+
+	// 关键路径：资金来源退款失败则返回错误，调用方必须中止（否则重建会话会双重扣款）。
+	if err := funding.Refund(); err != nil {
+		common.SysLog("RefundNow: 退还资金来源失败: " + err.Error())
+		return err
+	}
+	// 非关键路径：与异步 Refund() 保持一致，失败只记日志，不阻断后续流程。
+	if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
+		if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+			common.SysLog("RefundNow: 退还订阅额外预扣失败: " + err.Error())
+		}
+	}
+	if tokenConsumed > 0 && !isPlayground {
+		if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
+			common.SysLog("RefundNow: 退还令牌额度失败: " + err.Error())
+		}
+	}
+	return nil
+}
+
 func (s *BillingSession) Reserve(targetQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -332,6 +371,58 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 	}
+}
+
+// ---------------------------------------------------------------------------
+// EnsureBillingSessionForChannel — 渠道计费类型校验与会话切换
+// ---------------------------------------------------------------------------
+
+// EnsureBillingSessionForChannel 在渠道选定后校验当前计费会话与渠道计费类型限制是否相符。
+// 若不相符（如渠道仅允许钱包计费但当前会话为订阅，反之亦然），则同步退款并以正确来源重建会话。
+// 必须在 InitChannelMeta 之后调用，以确保 ChannelMeta.ChannelBillingType 已正确填充。
+func EnsureBillingSessionForChannel(c *gin.Context, relayInfo *relaycommon.RelayInfo, originalPreConsumedQuota int) *types.NewAPIError {
+	if relayInfo == nil || relayInfo.ChannelMeta == nil || relayInfo.Billing == nil {
+		return nil
+	}
+	channelBillingType := relayInfo.ChannelMeta.ChannelBillingType
+	if channelBillingType == model.ChannelBillingTypeAll {
+		return nil // 渠道无限制
+	}
+
+	currentSource := relayInfo.BillingSource
+	needsWallet := channelBillingType == model.ChannelBillingTypeWalletOnly
+	needsSubscription := channelBillingType == model.ChannelBillingTypeSubscriptionOnly
+
+	if (needsWallet && currentSource == BillingSourceWallet) ||
+		(needsSubscription && currentSource == BillingSourceSubscription) {
+		return nil // 已与渠道要求相符
+	}
+
+	logger.LogInfo(c, fmt.Sprintf("渠道计费类型(%d)与当前计费来源(%s)不符，同步切换计费会话 userId=%d",
+		channelBillingType, currentSource, relayInfo.UserId))
+
+	// 同步退款当前会话；退款失败时保留原会话状态，交由正常错误清理流程处理
+	if err := relayInfo.Billing.RefundNow(); err != nil {
+		common.SysLog(fmt.Sprintf("EnsureBillingSessionForChannel: 退款失败 userId=%d: %s", relayInfo.UserId, err.Error()))
+		return types.NewError(err, types.ErrorCodePreConsumeTokenQuotaFailed)
+	}
+
+	// 重置 RelayInfo 计费状态。注意：这些字段在 NewBillingSession 成功前就被清零；
+	// 若 NewBillingSession 失败并走错误日志路径，日志中这些字段将显示为零值，属预期行为。
+	relayInfo.Billing = nil
+	relayInfo.BillingSource = ""
+	relayInfo.FinalPreConsumedQuota = 0
+	relayInfo.SubscriptionId = 0
+	relayInfo.SubscriptionPreConsumed = 0
+	relayInfo.SubscriptionPostDelta = 0
+
+	// 重建会话，NewBillingSession 会根据 ChannelMeta.ChannelBillingType 选择正确的来源
+	newSession, apiErr := NewBillingSession(c, relayInfo, originalPreConsumedQuota)
+	if apiErr != nil {
+		return apiErr
+	}
+	relayInfo.Billing = newSession
+	return nil
 }
 
 // ---------------------------------------------------------------------------

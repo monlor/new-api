@@ -21,4 +21,8 @@ type BillingSettler interface {
 
 	// Reserve 将预扣额度补到目标值；若目标值不高于当前预扣额度则不做任何事。
 	Reserve(targetQuota int) error
+
+	// RefundNow 同步退还所有预扣费额度（资金来源 + 令牌），用于计费会话因渠道
+	// 计费类型冲突需要切换时。与 Refund 不同，本方法阻塞直到退款完成。
+	RefundNow() error
 }
