@@ -336,7 +336,7 @@ export function SubscriptionsMutateDrawer({
                   name='total_amount'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Received amount')}</FormLabel>
+                      <FormLabel>{t('Available amount')}</FormLabel>
                       <FormControl>
                         <Input
                           {...field}

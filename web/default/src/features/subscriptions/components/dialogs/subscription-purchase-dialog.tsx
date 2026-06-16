@@ -43,7 +43,13 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
-import { formatDuration, formatResetPeriod } from '../../lib'
+import { formatPaymentCurrency } from '@/features/wallet/lib/format'
+import {
+  formatDuration,
+  formatResetPeriod,
+  planHasReset,
+  calcEstimatedTotal,
+} from '../../lib'
 import type { PlanRecord } from '../../types'
 
 interface PaymentMethod {
@@ -64,6 +70,7 @@ interface Props {
   purchaseCount?: number
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
+  paymentCurrency?: string
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
@@ -80,6 +87,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }, [props.open, props.epayMethods])
 
+  const paymentCurrency = props.paymentCurrency ?? 'CNY'
   const plan = props.plan?.plan
   if (!plan) return null
 
@@ -295,15 +303,42 @@ export function SubscriptionPurchaseDialog(props: Props) {
               <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
             </div>
           )}
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('Received amount')}
-            </span>
-            <span className='flex items-center gap-1 text-sm'>
-              <Package className='h-3.5 w-3.5' />
-              {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
-            </span>
-          </div>
+          {planHasReset(plan) ? (
+            <>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-sm'>
+                  {t('Period Quota')}
+                </span>
+                <span className='flex items-center gap-1 text-sm'>
+                  <Package className='h-3.5 w-3.5' />
+                  {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+                </span>
+              </div>
+              {totalAmount > 0 && (
+                <div className='flex items-center justify-between'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('Total Quota')}
+                  </span>
+                  <span className='text-sm'>
+                    {(() => {
+                      const est = calcEstimatedTotal(plan)
+                      return est ? `≈ ${formatQuota(est)}` : t('Unlimited')
+                    })()}
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className='flex items-center justify-between'>
+              <span className='text-muted-foreground text-sm'>
+                {t('Total Quota')}
+              </span>
+              <span className='flex items-center gap-1 text-sm'>
+                <Package className='h-3.5 w-3.5' />
+                {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+              </span>
+            </div>
+          )}
           {plan.upgrade_group && (
             <div className='flex items-center justify-between'>
               <span className='text-muted-foreground text-sm'>
@@ -315,7 +350,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <Separator />
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
-            <span className='text-primary text-lg font-bold'>${price}</span>
+            <span className='text-primary text-lg font-bold'>{formatPaymentCurrency(Number(price), paymentCurrency)}</span>
           </div>
         </div>
 
@@ -331,11 +366,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
         <div className='flex flex-col gap-2 rounded-md border p-3'>
           <div className='flex items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground'>{t('Required')}</span>
-            <span>{formatQuota(balanceCost)}</span>
+            <span>{formatPaymentCurrency(Number(plan.price_amount || 0), paymentCurrency)}</span>
           </div>
           <div className='flex items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground'>{t('Available')}</span>
-            <span>{formatQuota(userQuota)}</span>
+            <span>{formatPaymentCurrency(userQuota / quotaPerUnit, paymentCurrency)}</span>
           </div>
           {!allowBalancePay ? (
             <Alert variant='destructive'>

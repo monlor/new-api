@@ -126,6 +126,13 @@ export interface SelfSubscriptionData {
 }
 
 // ============================================================================
+// Batch Subscription Map (admin user list)
+// ============================================================================
+
+/** userId (string key from JSON) -> latest active UserSubscription */
+export type UserSubscriptionBatchMap = Record<string, UserSubscription>
+
+// ============================================================================
 // Dialog Types
 // ============================================================================
 

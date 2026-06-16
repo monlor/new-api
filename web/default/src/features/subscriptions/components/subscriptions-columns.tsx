@@ -23,7 +23,12 @@ import { formatQuota } from '@/lib/format'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
-import { formatDuration, formatResetPeriod } from '../lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  planHasReset,
+  calcEstimatedTotal,
+} from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
@@ -159,17 +164,30 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
       },
       {
         id: 'total_amount',
-        header: t('Received amount'),
+        header: t('Available amount'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
-          const total = Number(row.original.plan.total_amount || 0)
+          const plan = row.original.plan
+          const total = Number(plan.total_amount || 0)
+          const hasReset = planHasReset(plan)
+          const estTotal = calcEstimatedTotal(plan)
+          if (!hasReset) {
+            return (
+              <span className='text-muted-foreground'>
+                {total > 0 ? `${t('Total Quota')}: ${formatQuota(total)}` : t('Unlimited')}
+              </span>
+            )
+          }
           return (
-            <span className='text-muted-foreground'>
-              {total > 0 ? formatQuota(total) : t('Unlimited')}
-            </span>
+            <div className='text-muted-foreground space-y-0.5 text-sm'>
+              <div>{t('Period Quota')}: {total > 0 ? formatQuota(total) : t('Unlimited')}</div>
+              {estTotal && (
+                <div>{t('Total Quota')}: ≈ {formatQuota(estTotal)}</div>
+              )}
+            </div>
           )
         },
-        size: 150,
+        size: 180,
       },
       {
         id: 'upgrade_group',

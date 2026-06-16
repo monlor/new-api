@@ -22,6 +22,7 @@ import type {
   PlanRecord,
   PlanPayload,
   UserSubscriptionRecord,
+  UserSubscriptionBatchMap,
   CreateUserSubscriptionRequest,
   SubscriptionPayResponse,
   SubscriptionPayRequest,

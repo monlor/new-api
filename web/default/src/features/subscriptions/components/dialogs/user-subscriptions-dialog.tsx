@@ -20,7 +20,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { formatQuota } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -52,8 +55,8 @@ import {
   invalidateUserSubscription,
   deleteUserSubscription,
 } from '../../api'
-import { formatTimestamp } from '../../lib'
-import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import { formatTimestamp, planHasReset } from '../../lib'
+import type { PlanRecord, SubscriptionPlan, UserSubscriptionRecord } from '../../types'
 
 interface Props {
   open: boolean
@@ -111,6 +114,14 @@ export function UserSubscriptionsDialog(props: Props) {
     const map = new Map<number, string>()
     plans.forEach((p) => {
       if (p.plan.id) map.set(p.plan.id, p.plan.title || `#${p.plan.id}`)
+    })
+    return map
+  }, [plans])
+
+  const planMap = useMemo(() => {
+    const map = new Map<number, SubscriptionPlan>()
+    plans.forEach((p) => {
+      if (p.plan.id) map.set(p.plan.id, p.plan)
     })
     return map
   }, [plans])
@@ -296,12 +307,60 @@ export function UserSubscriptionsDialog(props: Props) {
                 },
                 {
                   id: 'quota',
-                  header: t('Total Quota'),
+                  header: t('Subscription Usage'),
                   cell: (record) => {
                     const sub = record.subscription
                     const total = Number(sub.amount_total || 0)
                     const used = Number(sub.amount_used || 0)
-                    return total > 0 ? `${used}/${total}` : t('Unlimited')
+                    const remaining = Math.max(0, total - used)
+                    const pct = total > 0 ? Math.round((used / total) * 100) : 0
+                    const now = Date.now() / 1000
+                    const isActive =
+                      sub.status === 'active' && sub.end_time > now
+                    const plan = planMap.get(sub.plan_id)
+                    const hasReset = plan
+                      ? planHasReset(plan)
+                      : (sub.next_reset_time ?? 0) > 0
+
+                    if (total === 0) {
+                      return (
+                        <span className='text-muted-foreground text-sm'>
+                          {t('Unlimited')}
+                        </span>
+                      )
+                    }
+
+                    return (
+                      <div className='w-[160px] space-y-1'>
+                        <div className='text-muted-foreground text-xs'>
+                          {hasReset ? t('Period Quota') : t('Total Quota')}
+                        </div>
+                        <div className='flex justify-between text-xs'>
+                          <span className='font-medium tabular-nums'>
+                            {formatQuota(used)}
+                          </span>
+                          <span className='text-muted-foreground tabular-nums'>
+                            {formatQuota(total)}
+                          </span>
+                        </div>
+                        <Progress
+                          value={pct}
+                          className={cn(
+                            'h-1.5',
+                            pct >= 90
+                              ? '[&_[data-slot=progress-indicator]]:bg-rose-500'
+                              : pct >= 70
+                                ? '[&_[data-slot=progress-indicator]]:bg-amber-500'
+                                : '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+                          )}
+                        />
+                        <div className='text-muted-foreground text-xs'>
+                          {isActive
+                            ? `${t('Remaining:')} ${formatQuota(remaining)} · ${pct}%`
+                            : `${pct}% ${t('Used')}`}
+                        </div>
+                      </div>
+                    )
                   },
                 },
                 {

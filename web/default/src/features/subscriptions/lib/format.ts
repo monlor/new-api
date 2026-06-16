@@ -64,3 +64,53 @@ export function formatTimestamp(ts: number): string {
   if (!ts) return '-'
   return dayjs(ts * 1000).format('YYYY-MM-DD HH:mm:ss')
 }
+
+/** Whether the plan has a repeating quota reset (not 'never'). */
+export function planHasReset(plan: Partial<SubscriptionPlan>): boolean {
+  const period = plan?.quota_reset_period || 'never'
+  return period !== 'never'
+}
+
+/**
+ * Estimate the number of reset periods that fit within the subscription duration.
+ * Returns null when reset is 'never' or data is insufficient.
+ */
+export function calcPeriodCount(plan: Partial<SubscriptionPlan>): number | null {
+  if (!planHasReset(plan)) return null
+
+  const dval = plan?.duration_value || 1
+  let durationSeconds: number
+  switch (plan?.duration_unit) {
+    case 'year':   durationSeconds = dval * 365 * 86400; break
+    case 'month':  durationSeconds = dval * 30 * 86400; break
+    case 'day':    durationSeconds = dval * 86400; break
+    case 'hour':   durationSeconds = dval * 3600; break
+    case 'custom': durationSeconds = Number(plan?.custom_seconds || 0); break
+    default: return null
+  }
+
+  let resetSeconds: number
+  switch (plan?.quota_reset_period) {
+    case 'daily':   resetSeconds = 86400; break
+    case 'weekly':  resetSeconds = 7 * 86400; break
+    case 'monthly': resetSeconds = 30 * 86400; break
+    case 'custom':  resetSeconds = Number(plan?.quota_reset_custom_seconds || 0); break
+    default: return null
+  }
+
+  if (!durationSeconds || !resetSeconds) return null
+  const count = Math.floor(durationSeconds / resetSeconds)
+  return count > 0 ? count : null
+}
+
+/**
+ * Estimate total quota across all reset periods for a plan.
+ * Returns null when reset is 'never', perPeriod is 0 (unlimited), or period count can't be calculated.
+ */
+export function calcEstimatedTotal(plan: Partial<SubscriptionPlan>): number | null {
+  const perPeriod = Number(plan?.total_amount || 0)
+  if (perPeriod <= 0) return null
+  const periods = calcPeriodCount(plan)
+  if (!periods) return null
+  return perPeriod * periods
+}
