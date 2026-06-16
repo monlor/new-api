@@ -1,16 +1,15 @@
-# Frontend Development - Backend built from local source
+# Full-stack dev environment with hot reload
+#
+# Backend: air watches Go source → auto-rebuilds on change
+# Frontend: Rsbuild dev server with HMR, proxies /api /mj /pg → backend
 #
 # Usage:
-#   1. docker compose -f docker-compose.dev.yml up -d
-#   2. cd web && bun install && bun run dev
-#   3. Open http://localhost:3001 (Rsbuild dev server, API auto-proxied to :3000)
+#   docker compose -f docker-compose.dev.yml up
+#   Open http://localhost:3001
 #
-# Rebuild backend after Go code changes:
-#   docker compose -f docker-compose.dev.yml up -d --build new-api
-#
+# First run takes a few minutes to pull images and install deps.
 # Stop:
 #   docker compose -f docker-compose.dev.yml down
-#
 # Reset data:
 #   docker compose -f docker-compose.dev.yml down -v
 
@@ -25,6 +24,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      - .:/app                    # mount full source so air can watch Go files
+      - go_mod_cache:/go/pkg/mod  # keep module cache across rebuilds
       - dev_data:/data
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api
@@ -36,6 +37,27 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    networks:
+      - dev-network
+
+  frontend:
+    image: oven/bun:1
+    container_name: new-api-dev-frontend
+    working_dir: /app/web/default
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./web:/app/web             # mount web source for HMR
+      - bun_cache:/root/.bun       # cache bun install across restarts
+    environment:
+      # proxy target: points to the backend container
+      - VITE_REACT_APP_SERVER_URL=http://new-api:3000
+    command: >
+      sh -c "cd /app/web && bun install --frozen-lockfile &&
+             cd /app/web/default && bun run dev --port 3001"
+    depends_on:
+      - new-api
     networks:
       - dev-network
 
@@ -67,6 +89,8 @@ services:
 volumes:
   dev_data:
   dev_pg_data:
+  go_mod_cache:
+  bun_cache:
 
 networks:
   dev-network:
