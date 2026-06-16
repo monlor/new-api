@@ -28,6 +28,7 @@ import {
   DataTablePage,
   useDataTable,
 } from '@/components/data-table'
+import type { UserSubscriptionBatchMap } from '@/features/subscriptions/types'
 import { getUsers, searchUsers } from '../api'
 import {
   USER_STATUS,
@@ -48,7 +49,6 @@ function isDisabledUserRow(user: User) {
 
 export function UsersTable() {
   const { t } = useTranslation()
-  const columns = useUsersColumns()
   const { refreshTrigger } = useUsers()
   const isMobile = useMediaQuery('(max-width: 640px)')
 
@@ -125,12 +125,16 @@ export function UsersTable() {
       return {
         items: result.data?.items || [],
         total: result.data?.total || 0,
+        subscription_map: (result.data?.subscription_map ?? {}) as UserSubscriptionBatchMap,
       }
     },
     placeholderData: (previousData) => previousData,
   })
 
   const users = data?.items || []
+  const subscriptionMap: UserSubscriptionBatchMap = data?.subscription_map ?? {}
+
+  const columns = useUsersColumns(subscriptionMap)
 
   const { table } = useDataTable({
     data: users,

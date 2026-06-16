@@ -86,6 +86,7 @@ export interface GetUsersResponse {
     total: number
     page: number
     page_size: number
+    subscription_map?: Record<string, import('@/features/subscriptions/types').UserSubscription>
   }
 }
 

@@ -37,16 +37,19 @@ import {
   USER_ROLES,
   isUserDeleted,
 } from '../constants'
+import type { UserSubscriptionBatchMap } from '@/features/subscriptions/types'
 import { type User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
-function getQuotaProgressColor(percentage: number): string {
-  if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  if (percentage <= 30) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+function getSubProgressColor(pct: number): string {
+  if (pct >= 90) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
+  if (pct >= 70) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-export function useUsersColumns(): ColumnDef<User>[] {
+export function useUsersColumns(
+  subscriptionMap: UserSubscriptionBatchMap = {}
+): ColumnDef<User>[] {
   const { t } = useTranslation()
   return [
     {
@@ -164,15 +167,10 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       id: 'quota',
       accessorKey: 'quota',
-      header: t('Quota'),
+      header: t('Balance'),
       cell: ({ row }) => {
-        const user = row.original
-        const used = user.used_quota
-        const remaining = user.quota
-        const total = used + remaining
-        const percentage = total > 0 ? (remaining / total) * 100 : 0
-
-        if (total === 0) {
+        const remaining = row.original.quota
+        if (remaining === 0) {
           return (
             <StatusBadge
               label={t('No Quota')}
@@ -182,45 +180,106 @@ export function useUsersColumns(): ColumnDef<User>[] {
             />
           )
         }
+        return (
+          <span className='text-sm font-medium tabular-nums'>
+            {formatQuota(remaining)}
+          </span>
+        )
+      },
+      size: 130,
+    },
+    {
+      id: 'used_quota',
+      accessorKey: 'used_quota',
+      header: t('Used'),
+      cell: ({ row }) => {
+        const used = row.original.used_quota
+        if (used === 0) {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+        return (
+          <span className='text-muted-foreground text-sm tabular-nums'>
+            {formatQuota(used)}
+          </span>
+        )
+      },
+      size: 130,
+    },
+    {
+      id: 'subscription_usage',
+      header: t('Subscription Usage'),
+      cell: ({ row }) => {
+        const sub = subscriptionMap[String(row.original.id)]
+        if (!sub) {
+          return <span className='text-muted-foreground text-sm'>-</span>
+        }
+        const total = Number(sub.amount_total || 0)
+        const used = Number(sub.amount_used || 0)
+        const remaining = Math.max(0, total - used)
+        const pct = total > 0 ? Math.round((used / total) * 100) : 0
+        const now = Date.now() / 1000
+        const isExpired = sub.end_time > 0 && sub.end_time < now
 
         return (
           <Tooltip>
             <TooltipTrigger
-              render={<div className='w-[150px] cursor-help space-y-1' />}
+              render={<div className='w-[160px] cursor-help space-y-1' />}
             >
-              <div className='flex justify-between text-xs'>
-                <span className='font-medium tabular-nums'>
-                  {formatQuota(remaining)}
-                </span>
-                <span className='text-muted-foreground tabular-nums'>
-                  {formatQuota(total)}
-                </span>
-              </div>
-              <Progress
-                value={percentage}
-                className={cn('h-1.5', getQuotaProgressColor(percentage))}
-              />
+              {total > 0 ? (
+                <>
+                  <div className='flex justify-between text-xs'>
+                    <span className='font-medium tabular-nums'>
+                      {formatQuota(used)}
+                    </span>
+                    <span className='text-muted-foreground tabular-nums'>
+                      {formatQuota(total)}
+                    </span>
+                  </div>
+                  <Progress
+                    value={pct}
+                    className={cn('h-1.5', getSubProgressColor(pct))}
+                  />
+                </>
+              ) : (
+                <StatusBadge
+                  label={t('Unlimited')}
+                  variant='info'
+                  copyable={false}
+                  className='-ml-1.5'
+                />
+              )}
             </TooltipTrigger>
             <TooltipContent>
               <div className='space-y-1 text-xs'>
                 <div>
                   {t('Used:')} {formatQuota(used)}
                 </div>
+                {total > 0 && (
+                  <>
+                    <div>
+                      {t('Remaining:')} {formatQuota(remaining)}
+                    </div>
+                    <div>
+                      {t('Total:')} {formatQuota(total)}
+                    </div>
+                    <div>
+                      {t('Percentage:')} {pct}%
+                    </div>
+                  </>
+                )}
                 <div>
-                  {t('Remaining:')} {formatQuota(remaining)}
-                </div>
-                <div>
-                  {t('Total:')} {formatQuota(total)}
-                </div>
-                <div>
-                  {t('Percentage:')} {percentage.toFixed(1)}%
+                  {isExpired ? t('Expired') : t('Active')}
+                  {' · '}
+                  {t('Until')}{' '}
+                  {new Date(sub.end_time * 1000).toLocaleDateString()}
                 </div>
               </div>
             </TooltipContent>
           </Tooltip>
         )
       },
-      size: 170,
+      size: 180,
+      enableSorting: false,
     },
     {
       accessorKey: 'group',
