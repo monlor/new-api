@@ -703,34 +703,6 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         if (!isDisplayableLogType(log.type)) return null
 
         const quota = row.getValue('quota') as number
-        const other = parseLogOther(log.other)
-        const isSubscription = other?.billing_source === 'subscription'
-
-        if (isSubscription) {
-          return (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <StatusBadge
-                      label={t('Subscription')}
-                      variant='success'
-                      size='sm'
-                      copyable={false}
-                      className='cursor-help'
-                    />
-                  }
-                />
-                <TooltipContent>
-                  <span>
-                    {t('Deducted by subscription')}: {formatLogQuota(quota)}
-                  </span>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )
-        }
-
         const quotaStr = formatLogQuota(quota)
         const quotaDisplay = splitQuotaDisplay(quotaStr)
 
@@ -745,6 +717,39 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           </div>
         )
       },
+    },
+
+    {
+      id: 'billing_source',
+      header: t('Billing Source'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+
+        const other = parseLogOther(log.other)
+        const isSubscription = other?.billing_source === 'subscription'
+
+        if (isSubscription) {
+          return (
+            <StatusBadge
+              label={t('Subscription')}
+              variant='success'
+              size='sm'
+              copyable={false}
+            />
+          )
+        }
+
+        return (
+          <StatusBadge
+            label={t('Balance')}
+            variant='neutral'
+            size='sm'
+            copyable={false}
+          />
+        )
+      },
+      size: 100,
     },
 
     {
