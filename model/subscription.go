@@ -33,6 +33,13 @@ const (
 	SubscriptionResetCustom  = "custom"
 )
 
+// Subscription status values stored in the database.
+const (
+	SubscriptionStatusActive    = "active"
+	SubscriptionStatusExpired   = "expired"
+	SubscriptionStatusCancelled = "cancelled"
+)
+
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
@@ -824,6 +831,40 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 		return nil, err
 	}
 	return buildSubscriptionSummaries(subs), nil
+}
+
+// GetLatestActiveSubscriptionPerUser returns the latest active subscription for each of the
+// given userIds in a single query. The returned map key is the user ID.
+// userIds is processed in chunks of 200 to avoid large IN clauses on MySQL.
+func GetLatestActiveSubscriptionPerUser(userIds []int) (map[int]*UserSubscription, error) {
+	if len(userIds) == 0 {
+		return map[int]*UserSubscription{}, nil
+	}
+	const chunkSize = 200
+	now := common.GetTimestamp()
+	result := make(map[int]*UserSubscription, len(userIds))
+	for i := 0; i < len(userIds); i += chunkSize {
+		end := i + chunkSize
+		if end > len(userIds) {
+			end = len(userIds)
+		}
+		chunk := userIds[i:end]
+		var subs []UserSubscription
+		err := DB.Where("user_id IN ? AND status = ? AND end_time > ?", chunk, SubscriptionStatusActive, now).
+			Order("end_time desc, id desc").
+			Find(&subs).Error
+		if err != nil {
+			return nil, err
+		}
+		for j := range subs {
+			uid := subs[j].UserId
+			if _, exists := result[uid]; !exists {
+				subCopy := subs[j]
+				result[uid] = &subCopy
+			}
+		}
+	}
+	return result, nil
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {

@@ -282,7 +282,14 @@ func GetAllUsers(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
 
-	common.ApiSuccess(c, pageInfo)
+	subMap := fetchSubscriptionMap(users)
+	common.ApiSuccess(c, gin.H{
+		"page":             pageInfo.Page,
+		"page_size":        pageInfo.PageSize,
+		"total":            pageInfo.Total,
+		"items":            users,
+		"subscription_map": subMap,
+	})
 	return
 }
 
@@ -310,8 +317,34 @@ func SearchUsers(c *gin.Context) {
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
-	common.ApiSuccess(c, pageInfo)
+	subMap := fetchSubscriptionMap(users)
+	common.ApiSuccess(c, gin.H{
+		"page":             pageInfo.Page,
+		"page_size":        pageInfo.PageSize,
+		"total":            pageInfo.Total,
+		"items":            users,
+		"subscription_map": subMap,
+	})
 	return
+}
+
+func fetchSubscriptionMap(users []*model.User) map[int]*model.UserSubscription {
+	if len(users) == 0 {
+		return map[int]*model.UserSubscription{}
+	}
+	ids := make([]int, len(users))
+	for i, u := range users {
+		ids[i] = u.Id
+	}
+	subMap, err := model.GetLatestActiveSubscriptionPerUser(ids)
+	if err != nil {
+		common.SysLog("fetchSubscriptionMap: 查询订阅失败: " + err.Error())
+		return map[int]*model.UserSubscription{}
+	}
+	if subMap == nil {
+		return map[int]*model.UserSubscription{}
+	}
+	return subMap
 }
 
 func canManageTargetRole(myRole int, targetRole int) bool {

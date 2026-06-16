@@ -354,7 +354,6 @@ func AdminBindSubscription(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
-// ---- Admin: user subscription management ----
 
 func AdminListUserSubscriptions(c *gin.Context) {
 	userId, _ := strconv.Atoi(c.Param("id"))
