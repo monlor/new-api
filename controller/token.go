@@ -175,6 +175,10 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
+	if token.BillingType < model.ChannelBillingTypeAll || token.BillingType > model.ChannelBillingTypeSubscriptionOnly {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 	// 非无限额度时，检查额度值是否超出有效范围
 	if !token.UnlimitedQuota {
 		if token.RemainQuota < 0 {
