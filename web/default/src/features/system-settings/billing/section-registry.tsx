@@ -70,6 +70,10 @@ const BILLING_SECTIONS = [
               settings['quota_setting.enable_free_model_pre_consume'],
           },
         }}
+        paymentInfo={{
+          quotaPerUnit: settings.QuotaPerUnit || 500000,
+          currency: settings.PaymentCurrency || 'CNY',
+        }}
         complianceConfirmed={
           (settings['payment_setting.compliance_confirmed'] ?? false) &&
           settings['payment_setting.compliance_terms_version'] === 'v1'
@@ -135,6 +139,7 @@ const BILLING_SECTIONS = [
           PayAddress: settings.PayAddress,
           EpayId: settings.EpayId,
           EpayKey: settings.EpayKey,
+          PaymentCurrency: settings.PaymentCurrency ?? 'CNY',
           Price: settings.Price,
           MinTopUp: settings.MinTopUp,
           CustomCallbackAddress: settings.CustomCallbackAddress,

@@ -31,6 +31,11 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
@@ -46,6 +51,28 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+
+function getCurrencySymbol(currencyCode: string): string {
+  try {
+    const parts = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: currencyCode,
+      currencyDisplay: 'narrowSymbol',
+    }).formatToParts(0)
+    return parts.find((p) => p.type === 'currency')?.value ?? currencyCode
+  } catch {
+    return currencyCode
+  }
+}
+
+function quotaToCreditUnits(quota: number, quotaPerUnit: number): number {
+  if (quotaPerUnit <= 0) return 0
+  return quota / quotaPerUnit
+}
+
+function creditUnitsToQuota(units: number, quotaPerUnit: number): number {
+  return Math.round(units * quotaPerUnit)
+}
 
 const quotaSchema = z.object({
   QuotaForNewUser: z.coerce.number().min(0),
@@ -63,17 +90,49 @@ const quotaSchema = z.object({
 
 type QuotaFormValues = z.infer<typeof quotaSchema>
 
+type RawQuotaValues = {
+  QuotaForNewUser: number
+  PreConsumedQuota: number
+  QuotaForInviter: number
+  QuotaForInvitee: number
+  TopUpLink: string
+  general_setting: { docs_link: string }
+  quota_setting: { enable_free_model_pre_consume: boolean }
+}
+
+type PaymentInfo = {
+  quotaPerUnit: number
+  currency: string
+}
+
 type QuotaSettingsSectionProps = {
-  defaultValues: QuotaFormValues
+  defaultValues: RawQuotaValues
+  paymentInfo?: PaymentInfo
   complianceConfirmed?: boolean
 }
 
 export function QuotaSettingsSection({
   defaultValues,
+  paymentInfo,
   complianceConfirmed = true,
 }: QuotaSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+
+  const quotaPerUnit = paymentInfo?.quotaPerUnit ?? 500000
+  const currency = paymentInfo?.currency ?? 'CNY'
+  const currencySymbol = getCurrencySymbol(currency)
+
+  const toFormValues = (raw: RawQuotaValues): QuotaFormValues => ({
+    QuotaForNewUser: quotaToCreditUnits(raw.QuotaForNewUser, quotaPerUnit),
+    PreConsumedQuota: quotaToCreditUnits(raw.PreConsumedQuota, quotaPerUnit),
+    QuotaForInviter: quotaToCreditUnits(raw.QuotaForInviter, quotaPerUnit),
+    QuotaForInvitee: quotaToCreditUnits(raw.QuotaForInvitee, quotaPerUnit),
+    TopUpLink: raw.TopUpLink,
+    general_setting: raw.general_setting,
+    quota_setting: raw.quota_setting,
+  })
+
   const handleNumberChange =
     (onChange: (value: number | string) => void) =>
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -89,12 +148,22 @@ export function QuotaSettingsSection({
         unknown,
         QuotaFormValues
       >,
-      defaultValues,
+      defaultValues: toFormValues(defaultValues),
       onSubmit: async (_data, changedFields) => {
+        const quotaFields = new Set([
+          'QuotaForNewUser',
+          'PreConsumedQuota',
+          'QuotaForInviter',
+          'QuotaForInvitee',
+        ])
         for (const [key, value] of Object.entries(changedFields)) {
+          const saved =
+            quotaFields.has(key) && typeof value === 'number'
+              ? creditUnitsToQuota(value, quotaPerUnit)
+              : value
           await updateOption.mutateAsync({
             key,
-            value: value as string | number | boolean,
+            value: saved as string | number | boolean,
           })
         }
       },
@@ -127,19 +196,26 @@ export function QuotaSettingsSection({
               name='QuotaForNewUser'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('New User Quota')}</FormLabel>
+                  <FormLabel>{t('New User Balance')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
+                    <InputGroup>
+                      <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                      <InputGroupInput
+                        type='number'
+                        step='0.01'
+                        min='0'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </InputGroup>
                   </FormControl>
                   <FormDescription>
-                    {t('Initial quota given to new users')}
+                    {t('Initial balance given to new users (in {{currency}})', {
+                      currency,
+                    })}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -151,19 +227,27 @@ export function QuotaSettingsSection({
               name='PreConsumedQuota'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Pre-Consumed Quota')}</FormLabel>
+                  <FormLabel>{t('Pre-Consumed Balance')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
+                    <InputGroup>
+                      <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                      <InputGroupInput
+                        type='number'
+                        step='0.01'
+                        min='0'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </InputGroup>
                   </FormControl>
                   <FormDescription>
-                    {t('Quota consumed before charging users')}
+                    {t(
+                      'Balance reserved before request completes (in {{currency}})',
+                      { currency }
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -177,17 +261,24 @@ export function QuotaSettingsSection({
                 <FormItem>
                   <FormLabel>{t('Inviter Reward')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
+                    <InputGroup>
+                      <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                      <InputGroupInput
+                        type='number'
+                        step='0.01'
+                        min='0'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </InputGroup>
                   </FormControl>
                   <FormDescription>
-                    {t('Quota given to users who invite others')}
+                    {t('Balance given to users who invite others (in {{currency}})', {
+                      currency,
+                    })}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -201,17 +292,24 @@ export function QuotaSettingsSection({
                 <FormItem>
                   <FormLabel>{t('Invitee Reward')}</FormLabel>
                   <FormControl>
-                    <Input
-                      type='number'
-                      value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
-                      name={field.name}
-                      onBlur={field.onBlur}
-                      ref={field.ref}
-                    />
+                    <InputGroup>
+                      <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                      <InputGroupInput
+                        type='number'
+                        step='0.01'
+                        min='0'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </InputGroup>
                   </FormControl>
                   <FormDescription>
-                    {t('Quota given to invited users')}
+                    {t('Balance given to invited users (in {{currency}})', {
+                      currency,
+                    })}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

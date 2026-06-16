@@ -42,6 +42,14 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
@@ -86,6 +94,7 @@ const paymentSchema = z.object({
   }, 'Provide a valid callback URL starting with http:// or https://'),
   EpayId: z.string(),
   EpayKey: z.string(),
+  PaymentCurrency: z.string().min(1),
   Price: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z.string().refine((value) => {
@@ -403,6 +412,7 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(values.PayAddress),
       EpayId: values.EpayId.trim(),
       EpayKey: values.EpayKey.trim(),
+      PaymentCurrency: values.PaymentCurrency.trim() || 'CNY',
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
@@ -445,6 +455,7 @@ export function PaymentSettingsSection({
       PayAddress: removeTrailingSlash(initialRef.current.PayAddress),
       EpayId: initialRef.current.EpayId.trim(),
       EpayKey: initialRef.current.EpayKey.trim(),
+      PaymentCurrency: initialRef.current.PaymentCurrency.trim() || 'CNY',
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -500,6 +511,10 @@ export function PaymentSettingsSection({
 
     if (sanitized.EpayKey && sanitized.EpayKey !== initial.EpayKey) {
       updates.push({ key: 'EpayKey', value: sanitized.EpayKey })
+    }
+
+    if (sanitized.PaymentCurrency !== initial.PaymentCurrency) {
+      updates.push({ key: 'PaymentCurrency', value: sanitized.PaymentCurrency })
     }
 
     if (sanitized.Price !== initial.Price) {
@@ -865,13 +880,59 @@ export function PaymentSettingsSection({
               </p>
             </div>
 
+            <FormField
+              control={form.control}
+              name='PaymentCurrency'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Payment Currency')}</FormLabel>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    items={[
+                      { value: 'CNY', label: t('CNY (¥ Chinese Yuan)') },
+                      { value: 'USD', label: t('USD ($ US Dollar)') },
+                      { value: 'EUR', label: t('EUR (€ Euro)') },
+                      { value: 'GBP', label: t('GBP (£ British Pound)') },
+                      { value: 'JPY', label: t('JPY (¥ Japanese Yen)') },
+                      { value: 'HKD', label: t('HKD (HK$ Hong Kong Dollar)') },
+                      { value: 'TWD', label: t('TWD (NT$ New Taiwan Dollar)') },
+                      { value: 'SGD', label: t('SGD (S$ Singapore Dollar)') },
+                    ]}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        <SelectItem value='CNY'>{t('CNY (¥ Chinese Yuan)')}</SelectItem>
+                        <SelectItem value='USD'>{t('USD ($ US Dollar)')}</SelectItem>
+                        <SelectItem value='EUR'>{t('EUR (€ Euro)')}</SelectItem>
+                        <SelectItem value='GBP'>{t('GBP (£ British Pound)')}</SelectItem>
+                        <SelectItem value='JPY'>{t('JPY (¥ Japanese Yen)')}</SelectItem>
+                        <SelectItem value='HKD'>{t('HKD (HK$ Hong Kong Dollar)')}</SelectItem>
+                        <SelectItem value='TWD'>{t('TWD (NT$ New Taiwan Dollar)')}</SelectItem>
+                        <SelectItem value='SGD'>{t('SGD (S$ Singapore Dollar)')}</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {t('Currency shown on recharge amounts and subscription plan prices')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className='grid gap-6 md:grid-cols-2'>
               <FormField
                 control={form.control}
                 name='Price'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Price (local currency / USD)')}</FormLabel>
+                    <FormLabel>{t('Price (exchange rate to CNY)')}</FormLabel>
                     <FormControl>
                       <Input
                         type='number'
@@ -882,7 +943,7 @@ export function PaymentSettingsSection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'How much to charge for each US dollar of balance (Epay)'
+                        'Multiplier to convert payment currency to CNY for Epay (e.g. 7.3 for USD→CNY, 1 for CNY)'
                       )}
                     </FormDescription>
                     <FormMessage />
