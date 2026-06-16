@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react'
 import { getCookie, setCookie, removeCookie } from '@/lib/cookies'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
@@ -71,7 +72,12 @@ function resolveTheme(theme: Theme): ResolvedTheme {
 
 function getStoredTheme(storageKey: string, fallback: Theme): Theme {
   const storedTheme = getCookie(storageKey) as Theme | undefined
-  return storedTheme && THEMES.has(storedTheme) ? storedTheme : fallback
+  if (storedTheme && THEMES.has(storedTheme)) return storedTheme
+  // Fall back to system-configured default (persisted from /api/status)
+  const systemDefault = useSystemConfigStore.getState().config
+    .defaultColorScheme as Theme | undefined
+  if (systemDefault && THEMES.has(systemDefault)) return systemDefault
+  return fallback
 }
 
 export function ThemeProvider({
@@ -86,6 +92,19 @@ export function ThemeProvider({
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
     resolveTheme(getStoredTheme(storageKey, defaultTheme))
   )
+
+  // When the system-wide default changes (admin saves new default), apply it
+  // for users who haven't set a personal cookie preference.
+  useEffect(() => {
+    return useSystemConfigStore.subscribe((state) => {
+      const hasCookie = !!getCookie(storageKey)
+      if (hasCookie) return
+      const systemDefault = state.config.defaultColorScheme as Theme | undefined
+      if (systemDefault && THEMES.has(systemDefault)) {
+        _setTheme(systemDefault)
+      }
+    })
+  }, [storageKey])
 
   useEffect(() => {
     const root = window.document.documentElement

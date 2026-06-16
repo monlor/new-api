@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react'
 import { getCookie, removeCookie, setCookie } from '@/lib/cookies'
+import { type SystemConfig, useSystemConfigStore } from '@/stores/system-config-store'
 import {
   CONTENT_LAYOUT_VALUES,
   type ContentLayout,
@@ -43,6 +44,17 @@ import {
 } from '@/lib/theme-customization'
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365 // 1 year
+
+function getSystemCustomizationDefaults(): ThemeCustomization {
+  const cfg = useSystemConfigStore.getState().config
+  return {
+    preset: (cfg.defaultThemePreset as ThemePreset) || DEFAULT_THEME_CUSTOMIZATION.preset,
+    font: (cfg.defaultThemeFont as ThemeFont) || DEFAULT_THEME_CUSTOMIZATION.font,
+    radius: (cfg.defaultThemeRadius as ThemeRadius) || DEFAULT_THEME_CUSTOMIZATION.radius,
+    scale: (cfg.defaultThemeScale as ThemeScale) || DEFAULT_THEME_CUSTOMIZATION.scale,
+    contentLayout: (cfg.defaultThemeContentLayout as ContentLayout) || DEFAULT_THEME_CUSTOMIZATION.contentLayout,
+  }
+}
 
 function readCookie<T extends string>(
   name: string,
@@ -96,41 +108,74 @@ const ThemeCustomizationContext =
 export function ThemeCustomizationProvider(props: {
   children: React.ReactNode
 }) {
+  const systemDefaults = getSystemCustomizationDefaults()
+
   const [preset, _setPreset] = useState<ThemePreset>(() =>
     readCookie<ThemePreset>(
       THEME_COOKIE_KEYS.preset,
       THEME_PRESET_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.preset
+      systemDefaults.preset
     )
   )
   const [font, _setFont] = useState<ThemeFont>(() =>
     readCookie<ThemeFont>(
       THEME_COOKIE_KEYS.font,
       THEME_FONT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.font
+      systemDefaults.font
     )
   )
   const [radius, _setRadius] = useState<ThemeRadius>(() =>
     readCookie<ThemeRadius>(
       THEME_COOKIE_KEYS.radius,
       THEME_RADIUS_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.radius
+      systemDefaults.radius
     )
   )
   const [scale, _setScale] = useState<ThemeScale>(() =>
     readCookie<ThemeScale>(
       THEME_COOKIE_KEYS.scale,
       THEME_SCALE_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.scale
+      systemDefaults.scale
     )
   )
   const [contentLayout, _setContentLayout] = useState<ContentLayout>(() =>
     readCookie<ContentLayout>(
       THEME_COOKIE_KEYS.contentLayout,
       CONTENT_LAYOUT_VALUES,
-      DEFAULT_THEME_CUSTOMIZATION.contentLayout
+      systemDefaults.contentLayout
     )
   )
+
+  // Apply server-configured defaults for dimensions the user hasn't overridden with a cookie.
+  // Runs immediately at mount (catches config already loaded before mount) and re-runs
+  // whenever the store updates (admin saves new defaults or API response arrives late).
+  useEffect(() => {
+    const applyConfig = (cfg: SystemConfig) => {
+      if (!getCookie(THEME_COOKIE_KEYS.preset)) {
+        const v = cfg.defaultThemePreset as ThemePreset
+        if (v && THEME_PRESET_VALUES.has(v)) _setPreset(v)
+      }
+      if (!getCookie(THEME_COOKIE_KEYS.font)) {
+        const v = cfg.defaultThemeFont as ThemeFont
+        if (v && THEME_FONT_VALUES.has(v)) _setFont(v)
+      }
+      if (!getCookie(THEME_COOKIE_KEYS.radius)) {
+        const v = cfg.defaultThemeRadius as ThemeRadius
+        if (v && THEME_RADIUS_VALUES.has(v)) _setRadius(v)
+      }
+      if (!getCookie(THEME_COOKIE_KEYS.scale)) {
+        const v = cfg.defaultThemeScale as ThemeScale
+        if (v && THEME_SCALE_VALUES.has(v)) _setScale(v)
+      }
+      if (!getCookie(THEME_COOKIE_KEYS.contentLayout)) {
+        const v = cfg.defaultThemeContentLayout as ContentLayout
+        if (v && CONTENT_LAYOUT_VALUES.has(v)) _setContentLayout(v)
+      }
+    }
+    // Run once with current state to close the gap between useState init and subscription.
+    applyConfig(useSystemConfigStore.getState().config)
+    return useSystemConfigStore.subscribe((state) => applyConfig(state.config))
+  }, [])
 
   // Mirror state to the <body> via data-* attributes so theme-presets.css can
   // override CSS variables at the right cascade layer.
@@ -215,16 +260,17 @@ export function ThemeCustomizationProvider(props: {
   }, [])
 
   const resetCustomization = useCallback(() => {
-    setPreset(DEFAULT_THEME_CUSTOMIZATION.preset)
-    setFont(DEFAULT_THEME_CUSTOMIZATION.font)
-    setRadius(DEFAULT_THEME_CUSTOMIZATION.radius)
-    setScale(DEFAULT_THEME_CUSTOMIZATION.scale)
-    setContentLayout(DEFAULT_THEME_CUSTOMIZATION.contentLayout)
+    const d = getSystemCustomizationDefaults()
+    setPreset(d.preset)
+    setFont(d.font)
+    setRadius(d.radius)
+    setScale(d.scale)
+    setContentLayout(d.contentLayout)
   }, [setPreset, setFont, setRadius, setScale, setContentLayout])
 
   const value = useMemo<ThemeCustomizationContextType>(
     () => ({
-      defaults: DEFAULT_THEME_CUSTOMIZATION,
+      defaults: getSystemCustomizationDefaults(),
       customization: { preset, font, radius, scale, contentLayout },
       setPreset,
       setFont,

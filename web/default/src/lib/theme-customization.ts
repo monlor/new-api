@@ -96,8 +96,12 @@ export type ContentLayout = 'full' | 'centered'
  * - `serif` — editorial serif (Lora + CJK fallbacks), the project's
  *   "soul" typography. Inherits across the whole UI; monospace contexts
  *   keep their own family via Tailwind preflight and `.font-mono`.
+ * - `inter` — geometric humanist (Inter Variable). Used by OpenAI's platform,
+ *   Notion, Linear, and many AI-adjacent developer products.
+ * - `geist` — Vercel's typeface (Geist Variable). Slightly more geometric
+ *   than Inter; popular in modern developer tooling and AI products.
  */
-export type ThemeFont = 'default' | 'sans' | 'serif'
+export type ThemeFont = 'default' | 'sans' | 'serif' | 'inter' | 'geist'
 
 /**
  * The resolved (non-`default`) font value applied to the DOM. The provider
@@ -131,6 +135,8 @@ export const THEME_FONT_VALUES: ReadonlySet<ThemeFont> = new Set([
   'default',
   'sans',
   'serif',
+  'inter',
+  'geist',
 ])
 
 export const THEME_RADIUS_VALUES: ReadonlySet<ThemeRadius> = new Set([

@@ -6,11 +6,23 @@ import (
 )
 
 type ThemeSettings struct {
-	Frontend string `json:"frontend"`
+	Frontend             string `json:"frontend"`
+	DefaultColorScheme   string `json:"default_color_scheme"`   // system | dark | light
+	DefaultPreset        string `json:"default_preset"`
+	DefaultFont          string `json:"default_font"`
+	DefaultRadius        string `json:"default_radius"`
+	DefaultScale         string `json:"default_scale"`
+	DefaultContentLayout string `json:"default_content_layout"`
 }
 
 var themeSettings = ThemeSettings{
-	Frontend: "classic",
+	Frontend:             "classic",
+	DefaultColorScheme:   "system",
+	DefaultPreset:        "default",
+	DefaultFont:          "default",
+	DefaultRadius:        "default",
+	DefaultScale:         "default",
+	DefaultContentLayout: "full",
 }
 
 func init() {

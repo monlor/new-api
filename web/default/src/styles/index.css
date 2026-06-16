@@ -26,6 +26,12 @@ For commercial licensing, please contact support@quantumnous.com
  * that activates it. Loaded globally so font-switching is instantaneous
  * with no FOUT once the variable is fetched. */
 @import '@fontsource-variable/lora';
+/* Inter — geometric humanist used across OpenAI's platform and many AI
+ * developer products. Clean, neutral, highly legible at small sizes. */
+@import '@fontsource-variable/inter';
+/* Geist — Vercel's typeface, inspired by Inter. Popular in AI tooling,
+ * developer dashboards, and modern SaaS products. */
+@import '@fontsource-variable/geist';
 
 @import './theme.css';
 @import './theme-presets.css';

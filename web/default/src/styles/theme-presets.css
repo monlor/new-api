@@ -618,6 +618,12 @@ For commercial licensing, please contact support@quantumnous.com
 [data-theme-font='serif'] {
   --font-body: var(--font-serif);
 }
+[data-theme-font='inter'] {
+  --font-body: var(--font-inter);
+}
+[data-theme-font='geist'] {
+  --font-body: var(--font-geist);
+}
 
 /* ── Serif typography refinements ────────────────────────────────────────
  * When the body runs in serif, three things happen:

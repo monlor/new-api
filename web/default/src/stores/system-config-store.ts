@@ -44,6 +44,12 @@ export interface SystemConfig {
   demoSiteEnabled?: boolean
   displayTokenStatEnabled?: boolean
   currency: CurrencyConfig
+  defaultColorScheme: string
+  defaultThemePreset: string
+  defaultThemeFont: string
+  defaultThemeRadius: string
+  defaultThemeScale: string
+  defaultThemeContentLayout: string
 }
 
 export const DEFAULT_CURRENCY_CONFIG: CurrencyConfig = {
@@ -75,6 +81,12 @@ export const useSystemConfigStore = create<SystemConfigState>()(
         systemName: DEFAULT_SYSTEM_NAME,
         logo: DEFAULT_LOGO,
         currency: { ...DEFAULT_CURRENCY_CONFIG },
+        defaultColorScheme: 'system',
+        defaultThemePreset: 'default',
+        defaultThemeFont: 'default',
+        defaultThemeRadius: 'default',
+        defaultThemeScale: 'default',
+        defaultThemeContentLayout: 'full',
       },
       loading: true,
       loadedLogoUrl: DEFAULT_LOGO,

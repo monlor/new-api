@@ -46,6 +46,12 @@ interface StatusApiResponse {
     usd_exchange_rate?: number
     custom_currency_symbol?: string
     custom_currency_exchange_rate?: number
+    default_color_scheme?: string
+    default_theme_preset?: string
+    default_theme_font?: string
+    default_theme_radius?: string
+    default_theme_scale?: string
+    default_theme_content_layout?: string
   }
 }
 
@@ -98,6 +104,12 @@ export function mapStatusDataToConfig(
     demoSiteEnabled: data.demo_site_enabled,
     displayTokenStatEnabled: data.display_token_stat_enabled,
     currency,
+    defaultColorScheme: data.default_color_scheme || 'system',
+    defaultThemePreset: data.default_theme_preset || 'default',
+    defaultThemeFont: data.default_theme_font || 'default',
+    defaultThemeRadius: data.default_theme_radius || 'default',
+    defaultThemeScale: data.default_theme_scale || 'default',
+    defaultThemeContentLayout: data.default_theme_content_layout || 'full',
   }
 }
 

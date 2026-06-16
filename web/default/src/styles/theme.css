@@ -33,9 +33,14 @@ For commercial licensing, please contact support@quantumnous.com
     'Songti SC', 'STSong', 'STSongti-SC-Regular', 'PingFang SC', 'SimSun',
     'NSimSun', '宋体', 'FangSong', '仿宋', 'KaiTi', '楷体', Georgia,
     'Times New Roman', Cambria, 'Liberation Serif', serif;
-  --font-inter:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
-    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  /* Inter — geometric humanist; drives the `inter` font axis. Used by OpenAI's
+   * platform, Notion, Linear, and many AI-adjacent products. Pairs with
+   * technical content and high-density data tables. */
+  --font-inter: 'Inter Variable', 'Inter', sans-serif;
+  /* Geist — Vercel's typeface (inspired by Futura/Avenir). Drives the `geist`
+   * font axis. Slightly more geometric and distinctive than Inter; popular
+   * in developer tooling and modern AI products. */
+  --font-geist: 'Geist Variable', 'Geist', sans-serif;
   --font-manrope:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;

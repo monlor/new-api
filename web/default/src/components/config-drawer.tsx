@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type SVGProps } from 'react'
+import { type SVGProps, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Radio as RadioPrimitive } from '@base-ui/react/radio'
 import { RadioGroup as Radio } from '@base-ui/react/radio-group'
-import { CircleCheck, Palette, RotateCcw } from 'lucide-react'
+import { CircleCheck, Globe, Palette, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { IconDir } from '@/assets/custom/icon-dir'
 import { IconLayoutCompact } from '@/assets/custom/icon-layout-compact'
 import { IconLayoutDefault } from '@/assets/custom/icon-layout-default'
@@ -44,6 +46,8 @@ import { useDirection } from '@/context/direction-provider'
 import { type Collapsible, useLayout } from '@/context/layout-provider'
 import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { useTheme } from '@/context/theme-provider'
+import { useIsAdmin } from '@/hooks/use-admin'
+import { updateSystemOption } from '@/features/system-settings/api'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -71,6 +75,7 @@ export function ConfigDrawer() {
   const { resetTheme } = useTheme()
   const { resetLayout } = useLayout()
   const { resetCustomization } = useThemeCustomization()
+  const isAdmin = useIsAdmin()
 
   const handleReset = () => {
     setOpen(true)
@@ -113,7 +118,8 @@ export function ConfigDrawer() {
           <ContentLayoutConfig />
           <DirConfig />
         </div>
-        <SheetFooter className={sideDrawerFooterClassName('grid-cols-1')}>
+        <SheetFooter className={sideDrawerFooterClassName(isAdmin ? 'grid-cols-2' : 'grid-cols-1')}>
+          {isAdmin && <ApplyAsSystemDefaultButton />}
           <Button
             variant='destructive'
             onClick={handleReset}
@@ -324,6 +330,8 @@ const FONT_OPTIONS: {
   { value: 'default', label: 'Auto', preview: undefined },
   { value: 'sans', label: 'Sans', preview: 'var(--font-sans)' },
   { value: 'serif', label: 'Serif', preview: 'var(--font-serif)' },
+  { value: 'inter', label: 'Inter', preview: 'var(--font-inter)' },
+  { value: 'geist', label: 'Geist', preview: 'var(--font-geist)' },
 ]
 
 function FontConfig() {
@@ -339,7 +347,7 @@ function FontConfig() {
       <Radio
         value={customization.font}
         onValueChange={(v) => setFont(v as ThemeFont)}
-        className='grid w-full grid-cols-3 gap-4'
+        className='grid w-full grid-cols-5 gap-2'
         aria-label={t('Select body font')}
       >
         {FONT_OPTIONS.map((option) => (
@@ -741,5 +749,47 @@ function DirConfig() {
         {t('Choose between left-to-right or right-to-left site direction')}
       </div>
     </div>
+  )
+}
+
+function ApplyAsSystemDefaultButton() {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const { theme } = useTheme()
+  const { customization } = useThemeCustomization()
+  const [saving, setSaving] = useState(false)
+
+  const handleApply = async () => {
+    setSaving(true)
+    try {
+      await Promise.all([
+        updateSystemOption({ key: 'theme.default_color_scheme', value: theme }),
+        updateSystemOption({ key: 'theme.default_preset', value: customization.preset }),
+        updateSystemOption({ key: 'theme.default_font', value: customization.font }),
+        updateSystemOption({ key: 'theme.default_radius', value: customization.radius }),
+        updateSystemOption({ key: 'theme.default_scale', value: customization.scale }),
+        updateSystemOption({ key: 'theme.default_content_layout', value: customization.contentLayout }),
+      ])
+      // Invalidate status cache so the Zustand store picks up the new defaults
+      await queryClient.invalidateQueries({ queryKey: ['status'] })
+      try { window.localStorage.removeItem('status') } catch { /* empty */ }
+      toast.success(t('System default theme updated'))
+    } catch {
+      toast.error(t('Failed to update system default theme'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Button
+      variant='outline'
+      onClick={handleApply}
+      disabled={saving}
+      aria-label={t('Apply current theme as system default')}
+    >
+      <Globe className='size-4' aria-hidden='true' />
+      {saving ? t('Saving...') : t('Set as Default')}
+    </Button>
   )
 }
