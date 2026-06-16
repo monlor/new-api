@@ -156,6 +156,8 @@ export interface TopupInfo {
   payment_compliance_confirmed?: boolean
   /** Current compliance terms version */
   payment_compliance_terms_version?: string
+  /** ISO 4217 currency code used for payment display (e.g. "CNY", "USD") */
+  payment_currency?: string
 }
 
 /**

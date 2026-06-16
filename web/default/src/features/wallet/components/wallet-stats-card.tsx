@@ -18,17 +18,33 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Activity, BarChart3, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota } from '@/lib/format'
+import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
+import { useSystemConfig } from '@/hooks/use-system-config'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { UserWalletData } from '../types'
+import { formatPaymentCurrency } from '../lib'
+import type { TopupInfo, UserWalletData } from '../types'
 
 interface WalletStatsCardProps {
   user: UserWalletData | null
   loading?: boolean
+  topupInfo?: TopupInfo | null
 }
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
+  const { currency } = useSystemConfig()
+
+  const quotaPerUnit =
+    currency?.quotaPerUnit && currency.quotaPerUnit > 0
+      ? currency.quotaPerUnit
+      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+
+  const paymentCurrency = props.topupInfo?.payment_currency ?? 'CNY'
+
+  const formatBalance = (quota: number) => {
+    return formatPaymentCurrency(quota / quotaPerUnit, paymentCurrency)
+  }
+
   if (props.loading) {
     return (
       <div className='overflow-hidden rounded-lg border'>
@@ -48,13 +64,13 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   const stats = [
     {
       label: t('Current Balance'),
-      value: formatQuota(props.user?.quota ?? 0),
+      value: formatBalance(props.user?.quota ?? 0),
       description: t('Remaining quota'),
       icon: WalletCards,
     },
     {
       label: t('Total Usage'),
-      value: formatQuota(props.user?.used_quota ?? 0),
+      value: formatBalance(props.user?.used_quota ?? 0),
       description: t('Total consumed quota'),
       icon: BarChart3,
     },

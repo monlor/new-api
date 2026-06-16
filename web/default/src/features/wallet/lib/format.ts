@@ -62,6 +62,41 @@ export function formatCurrency(amount: number | string): string {
 }
 
 /**
+ * Format a payment amount using the gateway-configured payment currency.
+ *
+ * This is separate from the quota display currency (USD/CNY/TOKENS) that
+ * controls how API credits are shown. The payment currency only governs
+ * what symbol appears on recharge buttons and subscription plan prices.
+ *
+ * @param amount - Amount already in the payment currency (no conversion applied)
+ * @param currency - ISO 4217 code from topupInfo.payment_currency (e.g. "CNY", "USD")
+ */
+export function formatPaymentCurrency(
+  amount: number | string,
+  currency: string = 'CNY'
+): string {
+  const numeric =
+    typeof amount === 'number' ? amount : Number.parseFloat(String(amount))
+  if (!Number.isFinite(numeric)) return '-'
+
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.abs(numeric) >= 1 ? 2 : 4,
+    }).format(numeric)
+  } catch {
+    // Fallback for unrecognised currency codes
+    return `${currency} ${new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.abs(numeric) >= 1 ? 2 : 4,
+    }).format(numeric)}`
+  }
+}
+
+/**
  * Get discount label for display (e.g., "20% OFF")
  */
 export function getDiscountLabel(discount: number): string {

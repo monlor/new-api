@@ -21,7 +21,7 @@ import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
-import { formatLocalCurrencyAmount } from '@/lib/currency'
+import { formatPaymentCurrency } from '../lib'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -53,7 +53,12 @@ import {
   updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
-import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import {
+  formatDuration,
+  formatResetPeriod,
+  planHasReset,
+  calcEstimatedTotal,
+} from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -98,6 +103,7 @@ export function SubscriptionPlansCard({
   onPurchaseSuccess,
 }: SubscriptionPlansCardProps) {
   const { t } = useTranslation()
+  const paymentCurrency = topupInfo?.payment_currency ?? 'CNY'
 
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [activeSubscriptions, setActiveSubscriptions] = useState<
@@ -216,6 +222,14 @@ export function SubscriptionPlansCard({
       if (p?.plan?.id) {
         map.set(p.plan.id, p.plan.title || '')
       }
+    }
+    return map
+  }, [plans])
+
+  const planMap = useMemo(() => {
+    const map = new Map<number, (typeof plans)[0]['plan']>()
+    for (const p of plans) {
+      if (p?.plan?.id) map.set(p.plan.id, p.plan)
     }
     return map
   }, [plans])
@@ -402,6 +416,9 @@ export function SubscriptionPlansCard({
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
+                  const plan = planMap.get(subscription?.plan_id)
+                  const hasReset = plan ? planHasReset(plan) : (subscription?.next_reset_time ?? 0) > 0
+                  const estimatedTotal = plan ? calcEstimatedTotal(plan) : null
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
                   const now = Date.now() / 1000
@@ -469,7 +486,7 @@ export function SubscriptionPlansCard({
                         </div>
                       )}
                       <div className='text-muted-foreground mt-1'>
-                        {t('Total Quota')}:{' '}
+                        {hasReset ? t('Period Quota') : t('Total Quota')}:{' '}
                         {totalAmount > 0 ? (
                           <Tooltip>
                             <TooltipTrigger
@@ -493,6 +510,11 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
+                      {hasReset && estimatedTotal && (
+                        <div className='text-muted-foreground mt-1'>
+                          {t('Total Quota')}: ≈ {formatQuota(estimatedTotal)}
+                        </div>
+                      )}
                       {totalAmount > 0 && isActive && (
                         <Progress value={usagePercent} className='mt-2 h-1.5' />
                       )}
@@ -523,14 +545,23 @@ export function SubscriptionPlansCard({
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
 
+              const hasResetPlan = planHasReset(plan)
+              const estTotal = calcEstimatedTotal(plan)
               const benefits = [
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
-                formatResetPeriod(plan, t) !== t('No Reset')
+                hasResetPlan
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
-                totalAmount > 0
-                  ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                  : `${t('Total Quota')}: ${t('Unlimited')}`,
+                hasResetPlan
+                  ? (totalAmount > 0
+                      ? `${t('Period Quota')}: ${formatQuota(totalAmount)}`
+                      : `${t('Period Quota')}: ${t('Unlimited')}`)
+                  : (totalAmount > 0
+                      ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+                      : `${t('Total Quota')}: ${t('Unlimited')}`),
+                hasResetPlan && estTotal
+                  ? `${t('Total Quota')}: ≈ ${formatQuota(estTotal)}`
+                  : null,
                 limit > 0 ? `${t('Purchase Limit')}: ${limit}` : null,
                 plan.upgrade_group
                   ? `${t('Upgrade Group')}: ${plan.upgrade_group}`
@@ -571,7 +602,7 @@ export function SubscriptionPlansCard({
 
                     <div className='py-2'>
                       <span className='text-primary text-2xl font-bold'>
-                        {formatLocalCurrencyAmount(price)}
+                        {formatPaymentCurrency(price, paymentCurrency)}
                       </span>
                     </div>
 
@@ -640,6 +671,7 @@ export function SubscriptionPlansCard({
         epayMethods={epayMethods}
         userQuota={userQuota}
         onPurchaseSuccess={onPurchaseSuccess}
+        paymentCurrency={topupInfo?.payment_currency ?? 'CNY'}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user
             ? Number(selectedPlan.plan.max_purchase_per_user)

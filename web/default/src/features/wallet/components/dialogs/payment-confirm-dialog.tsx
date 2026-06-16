@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatLocalCurrencyAmount } from '@/lib/currency'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,9 +28,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Skeleton } from '@/components/ui/skeleton'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
+import { formatPaymentCurrency, getPaymentIcon } from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -39,12 +37,10 @@ interface PaymentConfirmDialogProps {
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
   topupAmount: number
-  paymentAmount: number
   paymentMethod: PaymentMethod | undefined
-  calculating: boolean
   processing: boolean
   discountRate?: number
-  usdExchangeRate?: number
+  paymentCurrency?: string
 }
 
 export function PaymentConfirmDialog({
@@ -52,17 +48,15 @@ export function PaymentConfirmDialog({
   onOpenChange,
   onConfirm,
   topupAmount,
-  paymentAmount,
   paymentMethod,
-  calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
-  usdExchangeRate = 1,
+  paymentCurrency = 'CNY',
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
-  const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
-  const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
-  const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const hasDiscount = discountRate > 0 && discountRate < 1
+  const discountedAmount = hasDiscount ? topupAmount * discountRate : topupAmount
+  const savedAmount = hasDiscount ? topupAmount - discountedAmount : 0
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -79,43 +73,26 @@ export function PaymentConfirmDialog({
         <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
           <div className='flex items-center justify-between'>
             <span className='text-muted-foreground text-sm'>
-              {t('Topup Amount')}
+              {t('Amount Due')}
             </span>
-            <span className='text-lg font-semibold'>
-              {formatLocalCurrencyAmount(topupAmount * usdExchangeRate, {
-                digitsLarge: 2,
-                digitsSmall: 2,
-                abbreviate: false,
-              })}
-            </span>
-          </div>
-
-          <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-sm'>
-              {t('You Pay')}
-            </span>
-            {calculating ? (
-              <Skeleton className='h-6 w-24' />
-            ) : (
-              <div className='flex items-baseline gap-2'>
-                <span className='text-2xl font-semibold'>
-                  {formatCurrency(paymentAmount)}
+            <div className='flex items-baseline gap-2'>
+              <span className='text-2xl font-semibold'>
+                {formatPaymentCurrency(discountedAmount, paymentCurrency)}
+              </span>
+              {hasDiscount && (
+                <span className='text-muted-foreground text-sm line-through'>
+                  {formatPaymentCurrency(topupAmount, paymentCurrency)}
                 </span>
-                {hasDiscount && (
-                  <span className='text-muted-foreground text-sm line-through'>
-                    {formatCurrency(originalAmount)}
-                  </span>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {hasDiscount && !calculating && (
+          {hasDiscount && (
             <div className='bg-muted/50 rounded-lg p-3'>
               <div className='flex items-center justify-between text-sm'>
                 <span className='text-muted-foreground'>{t('You save')}</span>
                 <span className='font-semibold text-green-600'>
-                  {formatCurrency(discountAmount)}
+                  {formatPaymentCurrency(savedAmount, paymentCurrency)}
                 </span>
               </div>
             </div>
