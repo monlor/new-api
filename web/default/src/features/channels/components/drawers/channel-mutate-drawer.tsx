@@ -2575,20 +2575,20 @@ export function ChannelMutateDrawer({
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue
-                                      placeholder={t('No restriction')}
+                                      placeholder={t('No Restriction')}
                                     >
                                       {field.value === 1
                                         ? t('Balance Only')
                                         : field.value === 2
                                           ? t('Subscription Only')
-                                          : t('No restriction')}
+                                          : t('No Restriction')}
                                     </SelectValue>
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent alignItemWithTrigger={false}>
                                   <SelectGroup>
                                     <SelectItem value='0'>
-                                      {t('No restriction')}
+                                      {t('No Restriction')}
                                     </SelectItem>
                                     <SelectItem value='1'>
                                       {t('Balance Only')}

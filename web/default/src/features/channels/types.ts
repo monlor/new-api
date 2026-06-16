@@ -72,6 +72,7 @@ export const channelSchema = z.object({
   }),
   settings: z.string().default('{}'), // other_settings JSON
   billing_type: z.number().min(0).max(2).default(0),
+  ratio: z.number().optional().default(1),
 })
 
 export type Channel = z.infer<typeof channelSchema>
