@@ -2,6 +2,11 @@ package operation_setting
 
 import "github.com/QuantumNous/new-api/setting/config"
 
+// PaymentCurrency is the ISO 4217 currency code used for payment display
+// (recharge amounts, subscription prices shown to users).
+// Defaults to "CNY" because Epay only supports CNY.
+var PaymentCurrency = "CNY"
+
 type PaymentSetting struct {
 	AmountOptions  []int           `json:"amount_options"`
 	AmountDiscount map[int]float64 `json:"amount_discount"` // 充值金额对应的折扣，例如 100 元 0.9 表示 100 元充值享受 9 折优惠
