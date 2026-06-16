@@ -67,6 +67,19 @@ export const API_KEY_STATUS_OPTIONS = Object.values(API_KEY_STATUSES).map(
 )
 
 // ============================================================================
+// API Key Billing Type Configuration
+// ============================================================================
+
+export const API_KEY_BILLING_TYPES: Record<
+  number,
+  Pick<StatusBadgeProps, 'variant'> & { label: string }
+> = {
+  0: { label: 'Subscription First', variant: 'info' },
+  1: { label: 'Balance Only', variant: 'neutral' },
+  2: { label: 'Subscription Only', variant: 'success' },
+}
+
+// ============================================================================
 // Default Values
 // ============================================================================
 

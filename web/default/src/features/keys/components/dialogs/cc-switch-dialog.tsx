@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels } from '@/lib/api'
+import { useSystemConfig } from '@/hooks/use-system-config'
+import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
@@ -52,26 +54,19 @@ const APP_CONFIGS = {
 
 type AppType = keyof typeof APP_CONFIGS
 
-function getServerAddress(): string {
-  try {
-    const raw = localStorage.getItem('status')
-    if (raw) {
-      const status = JSON.parse(raw)
-      if (status.server_address) return status.server_address
-    }
-  } catch {
-    /* empty */
-  }
-  return window.location.origin
+type ApiInfoEntry = {
+  id: number
+  url: string
+  description: string
 }
 
 function buildCCSwitchURL(
   app: string,
   name: string,
   models: Record<string, string>,
-  apiKey: string
+  apiKey: string,
+  serverAddress: string
 ): string {
-  const serverAddress = getServerAddress()
   const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress
   const params = new URLSearchParams()
   params.set('resource', 'provider')
@@ -95,9 +90,52 @@ interface Props {
 
 export function CCSwitchDialog(props: Props) {
   const { t } = useTranslation()
+  const { systemName } = useSystemConfig()
+  const systemNameRef = useRef(systemName)
+  systemNameRef.current = systemName
   const [app, setApp] = useState<AppType>('claude')
-  const [name, setName] = useState<string>(APP_CONFIGS.claude.defaultName)
+  const [name, setName] = useState<string>(systemName)
   const [models, setModels] = useState<Record<string, string>>({})
+  const [selectedEndpoint, setSelectedEndpoint] = useState<string>('')
+
+  const { status } = useStatus()
+
+  // Parse api_info and server_address from status response
+  const { apiInfoList, serverAddress } = useMemo(() => {
+    const raw = status as Record<string, unknown> | null
+    const addr =
+      (raw?.server_address as string | undefined) ?? window.location.origin
+    const rawList = raw?.api_info
+    const list: ApiInfoEntry[] = Array.isArray(rawList)
+      ? (rawList as Record<string, unknown>[])
+          .filter((item) => typeof item?.url === 'string' && item.url)
+          .map((item, idx) => ({
+            id: typeof item.id === 'number' ? item.id : idx,
+            url: item.url as string,
+            description:
+              typeof item.description === 'string' ? item.description : '',
+          }))
+      : []
+    return { apiInfoList: list, serverAddress: addr }
+  }, [status])
+
+  const endpointOptions = useMemo(
+    () =>
+      apiInfoList.map((item) => ({
+        value: item.url,
+        label: item.description ? `${item.description} (${item.url})` : item.url,
+      })),
+    [apiInfoList]
+  )
+
+  // Initialize selectedEndpoint when api_info loads or dialog opens
+  useEffect(() => {
+    if (!selectedEndpoint && apiInfoList.length > 0) {
+      setSelectedEndpoint(apiInfoList[0].url)
+    } else if (!selectedEndpoint && serverAddress) {
+      setSelectedEndpoint(serverAddress)
+    }
+  }, [apiInfoList, serverAddress, selectedEndpoint])
 
   const { data: modelsData } = useQuery({
     queryKey: ['user-models-ccswitch'],
@@ -118,8 +156,14 @@ export function CCSwitchDialog(props: Props) {
 
       setApp('claude')
 
-      setName(APP_CONFIGS.claude.defaultName)
+      setName(systemNameRef.current)
+
+      // Reset to first configured endpoint on open
+      setSelectedEndpoint(apiInfoList[0]?.url ?? serverAddress)
     }
+    // systemNameRef, apiInfoList and serverAddress are stable refs or
+    // derived from cached status — intentionally listed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.open])
 
   const currentConfig = APP_CONFIGS[app]
@@ -127,7 +171,7 @@ export function CCSwitchDialog(props: Props) {
   const handleAppChange = (val: string) => {
     const appVal = val as AppType
     setApp(appVal)
-    setName(APP_CONFIGS[appVal].defaultName)
+    setName(systemName)
     setModels({})
   }
 
@@ -139,7 +183,8 @@ export function CCSwitchDialog(props: Props) {
     const key = props.tokenKey.startsWith('sk-')
       ? props.tokenKey
       : `sk-${props.tokenKey}`
-    const url = buildCCSwitchURL(app, name, models, key)
+    const endpoint = selectedEndpoint || serverAddress
+    const url = buildCCSwitchURL(app, name, models, key, endpoint)
     window.open(url, '_blank')
     props.onOpenChange(false)
   }
@@ -191,8 +236,20 @@ export function CCSwitchDialog(props: Props) {
             options={[]}
             value={name}
             onValueChange={setName}
-            placeholder={currentConfig.defaultName}
+            placeholder={systemName}
             emptyText=''
+            allowCustomValue={true}
+          />
+        </div>
+
+        <div className='space-y-2'>
+          <Label>{t('API Endpoint')}</Label>
+          <ComboboxInput
+            options={endpointOptions}
+            value={selectedEndpoint}
+            onValueChange={setSelectedEndpoint}
+            placeholder={t('Select or enter endpoint URL')}
+            emptyText={t('No endpoints configured')}
             allowCustomValue={true}
           />
         </div>

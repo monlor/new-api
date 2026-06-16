@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/tooltip'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
-import { API_KEY_STATUSES } from '../constants'
+import { API_KEY_BILLING_TYPES, API_KEY_STATUSES } from '../constants'
 import { type ApiKey } from '../types'
 import {
   ApiKeyCell,
@@ -224,6 +224,25 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
           )
         }
         return <GroupBadge group={group} ratio={ratio} />
+      },
+      size: 160,
+      meta: { mobileHidden: true },
+    },
+    {
+      accessorKey: 'billing_type',
+      header: t('Billing Type'),
+      cell: ({ row }) => {
+        const billingType = Number(row.getValue('billing_type') ?? 0)
+        const config = API_KEY_BILLING_TYPES?.[billingType]
+        if (!config) return null
+        return (
+          <StatusBadge
+            label={t(config.label)}
+            variant={config.variant}
+            copyable={false}
+            className='-ml-1.5'
+          />
+        )
       },
       size: 160,
       meta: { mobileHidden: true },
