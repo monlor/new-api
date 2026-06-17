@@ -70,6 +70,14 @@ export type PricingModel = {
    * group carry different ratios (i.e. a price range exists).
    */
   group_channel_ratio_max?: Record<string, number>
+  /** Minimum channel ratio per group for wallet-eligible channels only. */
+  group_channel_ratio_min_wallet?: Record<string, number>
+  /** Maximum channel ratio per group for wallet-eligible channels only. */
+  group_channel_ratio_max_wallet?: Record<string, number>
+  /** Minimum channel ratio per group for subscription-eligible channels only. */
+  group_channel_ratio_min_subscription?: Record<string, number>
+  /** Maximum channel ratio per group for subscription-eligible channels only. */
+  group_channel_ratio_max_subscription?: Record<string, number>
   /**
    * Optional model metadata fields. These are not yet returned by the backend
    * and are populated client-side from {@link inferModelMetadata}.

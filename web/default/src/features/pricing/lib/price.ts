@@ -213,15 +213,26 @@ export function formatGroupPrice(
   showWithRecharge = false,
   priceRate = 1,
   usdExchangeRate = 1,
-  groupRatio: Record<string, number>
+  groupRatio: Record<string, number>,
+  channelRatioMinOverride?: Record<string, number>,
+  channelRatioMaxOverride?: Record<string, number>
 ): string {
   if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
 
   const gr = groupRatio[group] ?? 1
-  const crMin = model.group_channel_ratio_min?.[group] ?? 1
-  const crMax = model.group_channel_ratio_max?.[group] ?? crMin
+  const ratioMinMap = channelRatioMinOverride ?? model.group_channel_ratio_min
+  // When a min override is provided (split-by-billing-type mode), fall back to
+  // that same map as the max (single value, no range) rather than the combined
+  // model.group_channel_ratio_max which may include channels from other billing types.
+  const ratioMaxMap =
+    channelRatioMaxOverride ??
+    (channelRatioMinOverride !== undefined
+      ? channelRatioMinOverride
+      : model.group_channel_ratio_max)
+  const crMin = ratioMinMap?.[group] ?? 1
+  const crMax = ratioMaxMap?.[group] ?? crMin
 
   const fmt = (ratio: number) => {
     let p = calculateTokenPrice(model, type, ratio)
@@ -248,15 +259,23 @@ export function formatFixedPrice(
   showWithRecharge = false,
   priceRate = 1,
   usdExchangeRate = 1,
-  groupRatio: Record<string, number>
+  groupRatio: Record<string, number>,
+  channelRatioMinOverride?: Record<string, number>,
+  channelRatioMaxOverride?: Record<string, number>
 ): string {
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
 
   const gr = groupRatio[group] ?? 1
-  const crMin = model.group_channel_ratio_min?.[group] ?? 1
-  const crMax = model.group_channel_ratio_max?.[group] ?? crMin
+  const ratioMinMap = channelRatioMinOverride ?? model.group_channel_ratio_min
+  const ratioMaxMap =
+    channelRatioMaxOverride ??
+    (channelRatioMinOverride !== undefined
+      ? channelRatioMinOverride
+      : model.group_channel_ratio_max)
+  const crMin = ratioMinMap?.[group] ?? 1
+  const crMax = ratioMaxMap?.[group] ?? crMin
 
   const fmt = (ratio: number) => {
     let p = (model.model_price || 0) * ratio

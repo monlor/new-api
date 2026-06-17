@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { ArrowLeft, Code2, HeartPulse, Info, Timer } from 'lucide-react'
+import { ArrowLeft, Code2, Crown, HeartPulse, Info, Timer, Wallet } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
@@ -306,22 +306,6 @@ function ModelHeader(props: { model: PricingModel }) {
             </span>
           </>
         )}
-        {model.wallet_available && (
-          <>
-            <span className='text-muted-foreground/30'>·</span>
-            <span className='rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-500/20 dark:text-green-300'>
-              {t('Balance Available')}
-            </span>
-          </>
-        )}
-        {model.subscription_available && (
-          <>
-            <span className='text-muted-foreground/30'>·</span>
-            <span className='rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'>
-              {t('Subscription Available')}
-            </span>
-          </>
-        )}
       </div>
       {description && (
         <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
@@ -338,6 +322,26 @@ function ModelHeader(props: { model: PricingModel }) {
               {tag}
             </span>
           ))}
+        </div>
+      )}
+      {(model.wallet_available || model.subscription_available) && (
+        <div className='mt-2.5 flex flex-wrap gap-2'>
+          {model.wallet_available && (
+            <div className='flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-2.5 py-1 dark:border-green-500/30 dark:bg-green-500/10'>
+              <Wallet className='size-3.5 text-green-600 dark:text-green-400' />
+              <span className='text-xs font-medium text-green-700 dark:text-green-300'>
+                {t('Balance Available')}
+              </span>
+            </div>
+          )}
+          {model.subscription_available && (
+            <div className='flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 dark:border-blue-500/30 dark:bg-blue-500/10'>
+              <Crown className='size-3.5 text-blue-600 dark:text-blue-400' />
+              <span className='text-xs font-medium text-blue-700 dark:text-blue-300'>
+                {t('Subscription Available')}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </header>
@@ -798,94 +802,212 @@ function GroupPricingSection(props: {
     )
   }
 
-  const renderGroupPrice = (group: string, type: PriceType) =>
-    formatGroupPrice(
-      props.model,
-      group,
-      type,
-      props.tokenUnit,
-      showRechargePrice,
-      props.priceRate,
-      props.usdExchangeRate,
-      props.groupRatio
+  // Determine whether wallet and subscription channels carry different ratios,
+  // requiring two separate pricing tables.
+  // Compare both min AND effective-max (max falls back to min when no range exists)
+  // so that scenarios like wallet=12x~1000x vs subscription=12x are correctly split.
+  const shouldSplitByBillingType = useMemo(() => {
+    if (!props.model.wallet_available || !props.model.subscription_available)
+      return false
+    const wMin = props.model.group_channel_ratio_min_wallet
+    const sMin = props.model.group_channel_ratio_min_subscription
+    const wMax = props.model.group_channel_ratio_max_wallet
+    const sMax = props.model.group_channel_ratio_max_subscription
+    if (!wMin && !sMin && !wMax && !sMax) return false
+    for (const group of availableGroups) {
+      const wMinVal = wMin?.[group] ?? 1
+      const sMinVal = sMin?.[group] ?? 1
+      if (wMinVal !== sMinVal) return true
+      // also check effective max (falls back to min when no separate max exists)
+      const wMaxVal = wMax?.[group] ?? wMinVal
+      const sMaxVal = sMax?.[group] ?? sMinVal
+      if (wMaxVal !== sMaxVal) return true
+    }
+    return false
+  }, [props.model, availableGroups])
+
+  const buildColumns = (
+    crMinOverride?: Record<string, number>,
+    crMaxOverride?: Record<string, number>
+  ) => {
+    const hasChannelRatioForType = !!(
+      crMinOverride && Object.keys(crMinOverride).length > 0
     )
-  const renderFixedGroupPrice = (group: string) =>
-    formatFixedPrice(
-      props.model,
-      group,
-      showRechargePrice,
-      props.priceRate,
-      props.usdExchangeRate,
-      props.groupRatio
-    )
+    return [
+      {
+        id: 'group',
+        header: t('Group'),
+        className: thClass,
+        cellClassName: 'py-2.5',
+        cell: (group: string) => <GroupBadge group={group} size='sm' />,
+      },
+      {
+        id: 'ratio',
+        header: t('Ratio'),
+        className: thClass,
+        cellClassName: 'text-muted-foreground py-2.5 font-mono',
+        cell: (group: string) => `${props.groupRatio[group] || 1}x`,
+      },
+      ...(hasChannelRatioForType
+        ? [
+            {
+              id: 'channel_ratio',
+              header: t('Channel Ratio'),
+              className: thClass,
+              cellClassName: 'text-muted-foreground py-2.5 font-mono',
+              cell: (group: string) => {
+                const crMin = crMinOverride?.[group] ?? 1
+                const crMax = crMaxOverride?.[group] ?? crMin
+                if (crMin === crMax) return `${crMin}x`
+                return `${crMin}x ~ ${crMax}x`
+              },
+            },
+          ]
+        : []),
+      ...(isTokenBased
+        ? [
+            {
+              id: 'input',
+              header: t('Input'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatGroupPrice(
+                  props.model,
+                  group,
+                  'input',
+                  props.tokenUnit,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  props.groupRatio,
+                  crMinOverride,
+                  crMaxOverride
+                ),
+            },
+            {
+              id: 'output',
+              header: t('Output'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatGroupPrice(
+                  props.model,
+                  group,
+                  'output',
+                  props.tokenUnit,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  props.groupRatio,
+                  crMinOverride,
+                  crMaxOverride
+                ),
+            },
+            ...extraPriceTypes.map((ep) => ({
+              id: ep.type,
+              header: ep.label,
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatGroupPrice(
+                  props.model,
+                  group,
+                  ep.type,
+                  props.tokenUnit,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  props.groupRatio,
+                  crMinOverride,
+                  crMaxOverride
+                ),
+            })),
+          ]
+        : [
+            {
+              id: 'price',
+              header: t('Price'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: (group: string) =>
+                formatFixedPrice(
+                  props.model,
+                  group,
+                  showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  props.groupRatio,
+                  crMinOverride,
+                  crMaxOverride
+                ),
+            },
+          ]),
+    ]
+  }
+
+  const renderTable = (
+    keyPrefix: string,
+    crMinOverride?: Record<string, number>,
+    crMaxOverride?: Record<string, number>
+  ) => (
+    <StaticDataTable
+      key={keyPrefix}
+      className='-mx-4 rounded-none border-0 sm:mx-0'
+      tableClassName='text-sm'
+      headerRowClassName='hover:bg-transparent'
+      data={availableGroups}
+      getRowKey={(group) => `${keyPrefix}-${group}`}
+      columns={buildColumns(crMinOverride, crMaxOverride)}
+    />
+  )
+
+  const tokenUnitNote = isTokenBased && (
+    <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
+      {t('Prices shown per')} {tokenUnitLabel} tokens
+    </p>
+  )
 
   return (
     <section>
       <SectionTitle>{t('Pricing by Group')}</SectionTitle>
       <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
-      <StaticDataTable
-        className='-mx-4 rounded-none border-0 sm:mx-0'
-        tableClassName='text-sm'
-        headerRowClassName='hover:bg-transparent'
-        data={availableGroups}
-        getRowKey={(group) => group}
-        columns={[
-          {
-            id: 'group',
-            header: t('Group'),
-            className: thClass,
-            cellClassName: 'py-2.5',
-            cell: (group) => <GroupBadge group={group} size='sm' />,
-          },
-          {
-            id: 'ratio',
-            header: t('Ratio'),
-            className: thClass,
-            cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
-          },
-          ...(isTokenBased
-            ? [
-                {
-                  id: 'input',
-                  header: t('Input'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, 'input'),
-                },
-                {
-                  id: 'output',
-                  header: t('Output'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, 'output'),
-                },
-                ...extraPriceTypes.map((ep) => ({
-                  id: ep.type,
-                  header: ep.label,
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, ep.type),
-                })),
-              ]
-            : [
-                {
-                  id: 'price',
-                  header: t('Price'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: renderFixedGroupPrice,
-                },
-              ]),
-        ]}
-      />
-      <div className='-mx-4 sm:mx-0'>
-        {isTokenBased && (
-          <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
-            {t('Prices shown per')} {tokenUnitLabel} tokens
-          </p>
-        )}
-      </div>
+      {shouldSplitByBillingType ? (
+        <>
+          <div className='mt-2 mb-1 flex items-center gap-1.5 px-1'>
+            <Wallet className='size-3.5 text-green-600 dark:text-green-400' />
+            <span className='text-xs font-medium text-green-700 dark:text-green-300'>
+              {t('Balance Available')}
+            </span>
+          </div>
+          {renderTable(
+            'wallet',
+            props.model.group_channel_ratio_min_wallet,
+            props.model.group_channel_ratio_max_wallet
+          )}
+          <div className='mt-4 mb-1 flex items-center gap-1.5 px-1'>
+            <Crown className='size-3.5 text-blue-600 dark:text-blue-400' />
+            <span className='text-xs font-medium text-blue-700 dark:text-blue-300'>
+              {t('Subscription Available')}
+            </span>
+          </div>
+          {renderTable(
+            'subscription',
+            props.model.group_channel_ratio_min_subscription,
+            props.model.group_channel_ratio_max_subscription
+          )}
+          <div className='-mx-4 sm:mx-0'>{tokenUnitNote}</div>
+        </>
+      ) : (
+        <>
+          {renderTable(
+            'all',
+            props.model.group_channel_ratio_min,
+            props.model.group_channel_ratio_max
+          )}
+          <div className='-mx-4 sm:mx-0'>{tokenUnitNote}</div>
+        </>
+      )}
     </section>
   )
 }

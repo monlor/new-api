@@ -46,6 +46,14 @@ type Pricing struct {
 	// GroupChannelRatioMax holds the maximum channel ratio per group.
 	// Omitted when equal to GroupChannelRatioMin (no range to show).
 	GroupChannelRatioMax map[string]float64 `json:"group_channel_ratio_max,omitempty"`
+	// GroupChannelRatioMinWallet holds the minimum channel ratio per group for wallet-eligible channels only.
+	GroupChannelRatioMinWallet map[string]float64 `json:"group_channel_ratio_min_wallet,omitempty"`
+	// GroupChannelRatioMaxWallet holds the maximum channel ratio per group for wallet-eligible channels only.
+	GroupChannelRatioMaxWallet map[string]float64 `json:"group_channel_ratio_max_wallet,omitempty"`
+	// GroupChannelRatioMinSubscription holds the minimum channel ratio per group for subscription-eligible channels only.
+	GroupChannelRatioMinSubscription map[string]float64 `json:"group_channel_ratio_min_subscription,omitempty"`
+	// GroupChannelRatioMaxSubscription holds the maximum channel ratio per group for subscription-eligible channels only.
+	GroupChannelRatioMaxSubscription map[string]float64 `json:"group_channel_ratio_max_subscription,omitempty"`
 }
 
 type PricingVendor struct {
@@ -213,6 +221,24 @@ func updatePricing() {
 		max float64
 	}
 	modelGroupChannelRatio := make(map[string]map[string]*minMaxRatio)
+	modelGroupChannelRatioWallet := make(map[string]map[string]*minMaxRatio)
+	modelGroupChannelRatioSubscription := make(map[string]map[string]*minMaxRatio)
+
+	accumulateRatio := func(ratioMap map[string]map[string]*minMaxRatio, model, group string, cr float64) {
+		if _, ok := ratioMap[model]; !ok {
+			ratioMap[model] = make(map[string]*minMaxRatio)
+		}
+		if mm, exists := ratioMap[model][group]; exists {
+			if cr < mm.min {
+				mm.min = cr
+			}
+			if cr > mm.max {
+				mm.max = cr
+			}
+		} else {
+			ratioMap[model][group] = &minMaxRatio{min: cr, max: cr}
+		}
+	}
 
 	for _, ability := range enableAbilities {
 		groups, ok := modelGroupsMap[ability.Model]
@@ -237,23 +263,23 @@ func updatePricing() {
 			avail.subscriptionAvailable = true
 		}
 
-		// accumulate min/max channel ratio per (model, group)
-		if _, ok := modelGroupChannelRatio[ability.Model]; !ok {
-			modelGroupChannelRatio[ability.Model] = make(map[string]*minMaxRatio)
-		}
 		cr := ability.ChannelRatio
 		if cr <= 0 {
 			cr = 1.0
 		}
-		if mm, exists := modelGroupChannelRatio[ability.Model][ability.Group]; exists {
-			if cr < mm.min {
-				mm.min = cr
-			}
-			if cr > mm.max {
-				mm.max = cr
-			}
-		} else {
-			modelGroupChannelRatio[ability.Model][ability.Group] = &minMaxRatio{min: cr, max: cr}
+
+		// accumulate min/max channel ratio per (model, group) — combined
+		accumulateRatio(modelGroupChannelRatio, ability.Model, ability.Group, cr)
+
+		// accumulate per billing type
+		switch ability.ChannelBillingType {
+		case ChannelBillingTypeWalletOnly:
+			accumulateRatio(modelGroupChannelRatioWallet, ability.Model, ability.Group, cr)
+		case ChannelBillingTypeSubscriptionOnly:
+			accumulateRatio(modelGroupChannelRatioSubscription, ability.Model, ability.Group, cr)
+		default: // ChannelBillingTypeAll — contributes to both
+			accumulateRatio(modelGroupChannelRatioWallet, ability.Model, ability.Group, cr)
+			accumulateRatio(modelGroupChannelRatioSubscription, ability.Model, ability.Group, cr)
 		}
 	}
 
@@ -343,6 +369,36 @@ func updatePricing() {
 		}
 	}
 
+	// fillGroupChannelRatioFields extracts non-default min/max ratios into output maps.
+	fillGroupChannelRatioFields := func(groupRatios map[string]*minMaxRatio, minDst, maxDst *map[string]float64) {
+		if groupRatios == nil {
+			return
+		}
+		minMap := make(map[string]float64)
+		maxMap := make(map[string]float64)
+		for group, mm := range groupRatios {
+			if mm.min != 1.0 || mm.max != 1.0 {
+				minMap[group] = mm.min
+				maxMap[group] = mm.max
+			}
+		}
+		if len(minMap) > 0 {
+			*minDst = minMap
+		}
+		if len(maxMap) > 0 {
+			hasRange := false
+			for g, mx := range maxMap {
+				if mx != minMap[g] {
+					hasRange = true
+					break
+				}
+			}
+			if hasRange {
+				*maxDst = maxMap
+			}
+		}
+	}
+
 	pricingMap = make([]Pricing, 0)
 	for model, groups := range modelGroupsMap {
 		pricing := Pricing{
@@ -405,33 +461,10 @@ func updatePricing() {
 			pricing.SubscriptionAvailable = true
 		}
 
-		// compute per-group min/max channel ratio
-		if groupRatios, ok := modelGroupChannelRatio[model]; ok {
-			minMap := make(map[string]float64)
-			maxMap := make(map[string]float64)
-			for group, mm := range groupRatios {
-				if mm.min != 1.0 || mm.max != 1.0 {
-					minMap[group] = mm.min
-					maxMap[group] = mm.max
-				}
-			}
-			if len(minMap) > 0 {
-				pricing.GroupChannelRatioMin = minMap
-			}
-			if len(maxMap) > 0 {
-				// only store max when it differs from min somewhere
-				hasRange := false
-				for g, mx := range maxMap {
-					if mx != minMap[g] {
-						hasRange = true
-						break
-					}
-				}
-				if hasRange {
-					pricing.GroupChannelRatioMax = maxMap
-				}
-			}
-		}
+		// compute per-group min/max channel ratio — combined, wallet-only, subscription-only
+		fillGroupChannelRatioFields(modelGroupChannelRatio[model], &pricing.GroupChannelRatioMin, &pricing.GroupChannelRatioMax)
+		fillGroupChannelRatioFields(modelGroupChannelRatioWallet[model], &pricing.GroupChannelRatioMinWallet, &pricing.GroupChannelRatioMaxWallet)
+		fillGroupChannelRatioFields(modelGroupChannelRatioSubscription[model], &pricing.GroupChannelRatioMinSubscription, &pricing.GroupChannelRatioMaxSubscription)
 
 		pricingMap = append(pricingMap, pricing)
 	}
