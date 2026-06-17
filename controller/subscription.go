@@ -420,6 +420,49 @@ func AdminInvalidateUserSubscription(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+type AdminForceSyncSubscriptionPlanRequest struct {
+	UsedQuotaMode string `json:"used_quota_mode"` // "keep" | "proportional"
+}
+
+// AdminForceSyncSubscriptionPlan syncs the current plan config (quota, reset period)
+// to all active user subscriptions for the given plan.
+func AdminForceSyncSubscriptionPlan(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
+	id, _ := strconv.Atoi(c.Param("id"))
+	if id <= 0 {
+		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+
+	var req AdminForceSyncSubscriptionPlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.SysLog("AdminForceSyncSubscriptionPlan: failed to bind request body: " + err.Error())
+	}
+	if req.UsedQuotaMode != "proportional" {
+		req.UsedQuotaMode = "keep"
+	}
+
+	plan, err := model.GetSubscriptionPlanById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if plan == nil {
+		common.ApiErrorMsg(c, "套餐不存在")
+		return
+	}
+
+	count, err := model.AdminSyncPlanToUserSubscriptions(id, plan, req.UsedQuotaMode)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"count": count})
+}
+
 // AdminDeleteUserSubscription hard-deletes a user subscription.
 func AdminDeleteUserSubscription(c *gin.Context) {
 	subId, _ := strconv.Atoi(c.Param("id"))

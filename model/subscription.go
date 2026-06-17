@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -927,6 +928,63 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 }
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.
+// AdminSyncPlanToUserSubscriptions syncs plan config (TotalAmount, QuotaResetPeriod)
+// to all active UserSubscriptions for the given plan.
+// usedQuotaMode: "keep" (default) leaves AmountUsed unchanged;
+// "proportional" scales AmountUsed proportionally to the new TotalAmount.
+// Returns the number of subscriptions updated.
+func AdminSyncPlanToUserSubscriptions(planId int, plan *SubscriptionPlan, usedQuotaMode string) (int64, error) {
+	if planId <= 0 || plan == nil {
+		return 0, errors.New("invalid planId or plan")
+	}
+
+	var subs []UserSubscription
+	now := time.Now()
+	if err := DB.Where("plan_id = ? AND status = ? AND end_time > ?", planId, SubscriptionStatusActive, now.Unix()).Find(&subs).Error; err != nil {
+		return 0, err
+	}
+
+	var updated int64
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for i := range subs {
+			sub := &subs[i]
+			oldAmountTotal := sub.AmountTotal
+			sub.AmountTotal = plan.TotalAmount
+
+			updates := map[string]any{
+				"amount_total":    sub.AmountTotal,
+				"next_reset_time": sub.NextResetTime,
+			}
+
+			if usedQuotaMode == "proportional" && oldAmountTotal > 0 && plan.TotalAmount != oldAmountTotal {
+				sub.AmountUsed = int64(math.Round(float64(sub.AmountUsed) / float64(oldAmountTotal) * float64(plan.TotalAmount)))
+				if sub.AmountUsed < 0 {
+					sub.AmountUsed = 0
+				}
+				if sub.AmountUsed > plan.TotalAmount {
+					sub.AmountUsed = plan.TotalAmount
+				}
+				updates["amount_used"] = sub.AmountUsed
+			}
+
+			var nextReset int64
+			if sub.LastResetTime > 0 {
+				nextReset = calcNextResetTime(time.Unix(sub.LastResetTime, 0), plan, sub.EndTime)
+			} else {
+				nextReset = calcNextResetTime(now, plan, sub.EndTime)
+			}
+			sub.NextResetTime = nextReset
+			updates["next_reset_time"] = sub.NextResetTime
+			if err := tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error; err != nil {
+				return err
+			}
+			updated++
+		}
+		return nil
+	})
+	return updated, err
+}
+
 func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {
 		return "", errors.New("invalid userSubscriptionId")

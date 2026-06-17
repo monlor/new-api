@@ -136,4 +136,4 @@ export type UserSubscriptionBatchMap = Record<string, UserSubscription>
 // Dialog Types
 // ============================================================================
 
-export type SubscriptionsDialogType = 'create' | 'update' | 'toggle-status'
+export type SubscriptionsDialogType = 'create' | 'update' | 'toggle-status' | 'force-sync'

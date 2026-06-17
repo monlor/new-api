@@ -63,6 +63,16 @@ export async function patchPlanStatus(
   return res.data
 }
 
+export async function syncSubscriptionPlan(
+  id: number,
+  usedQuotaMode: 'keep' | 'proportional'
+): Promise<ApiResponse<{ count: number }>> {
+  const res = await api.post(`/api/subscription/admin/plans/${id}/sync`, {
+    used_quota_mode: usedQuotaMode,
+  })
+  return res.data
+}
+
 // ============================================================================
 // Admin User Subscription Management
 // ============================================================================
