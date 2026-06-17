@@ -1381,6 +1381,7 @@
     "Each tier supports up to 2 conditions; the last tier is the catch-all without conditions. Use full input length for tier conditions to avoid mis-routing when cache hits reduce billable input tokens.": "Each tier supports up to 2 conditions; the last tier is the catch-all without conditions. Use full input length for tier conditions to avoid mis-routing when cache hits reduce billable input tokens.",
     "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.": "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.",
     "Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.": "Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.",
+    "Inviter gets {{inviter}}, invitee gets {{invitee}}.": "Inviter gets {{inviter}}, invitee gets {{invitee}}.",
     "Edit": "Edit",
     "Edit {{title}}": "Edit {{title}}",
     "Edit all channels with tag:": "Edit all channels with tag:",
@@ -3313,6 +3314,7 @@
     "Reference Video": "Reference Video",
     "Referral link:": "Referral link:",
     "Referral Program": "Referral Program",
+    "Referral Rebate": "Referral Rebate",
     "Referral reward transfer is disabled until the administrator confirms compliance terms.": "Referral reward transfer is disabled until the administrator confirms compliance terms.",
     "Refine models by provider, group, type, and tags.": "Refine models by provider, group, type, and tags.",
     "Refresh": "Refresh",
@@ -4665,6 +4667,12 @@
     "JPY (¥ Japanese Yen)": "JPY (¥ Japanese Yen)",
     "HKD (HK$ Hong Kong Dollar)": "HKD (HK$ Hong Kong Dollar)",
     "TWD (NT$ New Taiwan Dollar)": "TWD (NT$ New Taiwan Dollar)",
-    "SGD (S$ Singapore Dollar)": "SGD (S$ Singapore Dollar)"
+    "SGD (S$ Singapore Dollar)": "SGD (S$ Singapore Dollar)",
+    "Use API Key": "Use API Key",
+    "Add the following to your shell profile or set as environment variables before running Claude Code.": "Add the following to your shell profile or set as environment variables before running Claude Code.",
+    "Make sure the following content is at the beginning of the config.toml file.": "Make sure the following content is at the beginning of the config.toml file.",
+    "Add the following environment variables to your terminal profile or run directly in terminal.": "Add the following environment variables to your terminal profile or run directly in terminal.",
+    "Add the following config files to the Codex CLI config directory.": "Add the following config files to the Codex CLI config directory.",
+    "These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.": "These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file."
   }
 }

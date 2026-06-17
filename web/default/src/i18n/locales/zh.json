@@ -651,7 +651,7 @@
     "Category name is required": "分类名称不能为空",
     "Category name must be less than 50 characters": "分类名称不能超过 50 个字符",
     "Caution": "注意",
-    "CC Switch": "CC Switch",
+    "CC Switch": "CC 开关",
     "Centered": "居中",
     "Chain": "链路",
     "Change": "更改",
@@ -1381,6 +1381,7 @@
     "Each tier supports up to 2 conditions; the last tier is the catch-all without conditions. Use full input length for tier conditions to avoid mis-routing when cache hits reduce billable input tokens.": "每个档位最多支持 2 个条件；最后一个档位是不带条件的兜底档。建议使用完整输入长度作为档位条件，避免缓存命中减少计费输入 token 后误判档位。",
     "Each tier supports up to 2 conditions. The last tier without conditions is the fallback.": "每个阶梯最多支持 2 个条件。最后一个无条件阶梯作为兜底。",
     "Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.": "当您的推荐人充值时即可获得奖励。随时将累计奖励转移到您的余额。",
+    "Inviter gets {{inviter}}, invitee gets {{invitee}}.": "邀请人可获得 {{inviter}}，被邀请人可获得 {{invitee}}。",
     "Edit": "编辑",
     "Edit {{title}}": "编辑{{title}}",
     "Edit all channels with tag:": "编辑所有带有标签的渠道：",
@@ -3313,6 +3314,7 @@
     "Reference Video": "参照生视频",
     "Referral link:": "推荐链接：",
     "Referral Program": "推荐计划",
+    "Referral Rebate": "推荐返利",
     "Referral reward transfer is disabled until the administrator confirms compliance terms.": "管理员确认合规条款之前，邀请奖励转移功能不可用。",
     "Refine models by provider, group, type, and tags.": "按供应商、分组、类型和标签细化模型。",
     "Refresh": "刷新",
@@ -4665,6 +4667,12 @@
     "JPY (¥ Japanese Yen)": "JPY（¥ 日元）",
     "HKD (HK$ Hong Kong Dollar)": "HKD（HK$ 港元）",
     "TWD (NT$ New Taiwan Dollar)": "TWD（NT$ 新台币）",
-    "SGD (S$ Singapore Dollar)": "SGD（S$ 新加坡元）"
+    "SGD (S$ Singapore Dollar)": "SGD（S$ 新加坡元）",
+    "Use API Key": "使用 API 密钥",
+    "Add the following to your shell profile or set as environment variables before running Claude Code.": "将以下内容添加到 Shell 配置文件，或在运行 Claude Code 前设置为环境变量。",
+    "Make sure the following content is at the beginning of the config.toml file.": "请确保以下内容位于 config.toml 文件的开头部分。",
+    "Add the following environment variables to your terminal profile or run directly in terminal.": "将以下环境变量添加到终端配置文件，或直接在终端中运行。",
+    "Add the following config files to the Codex CLI config directory.": "将以下配置文件添加到 Codex CLI 配置目录中。",
+    "These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.": "这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。"
   }
 }

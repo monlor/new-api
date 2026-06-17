@@ -17,8 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+/**
+ * Normalize a raw language tag to the canonical zh variant code.
+ * Returns 'zh-TW', 'zh', or null if the tag is not Chinese.
+ * Expects the tag to already be lowercased with underscores replaced by hyphens.
+ */
+export function normalizeChineseVariant(normalized: string): 'zh-TW' | 'zh' | null {
+  if (normalized === 'zh-tw' || normalized === 'zh-hk' || normalized === 'zh-hant') return 'zh-TW'
+  if (normalized.startsWith('zh')) return 'zh'
+  return null
+}
+
 export const INTERFACE_LANGUAGE_OPTIONS = [
   { code: 'zh', label: '简体中文' },
+  { code: 'zh-TW', label: '繁體中文' },
   { code: 'en', label: 'English' },
   { code: 'fr', label: 'Français' },
   { code: 'ru', label: 'Русский' },
@@ -33,7 +45,8 @@ export function normalizeInterfaceLanguage(value?: string | null): string {
   if (!value) return 'en'
 
   const normalized = value.trim().replace(/_/g, '-').toLowerCase()
-  if (normalized.startsWith('zh')) return 'zh'
+  const chinese = normalizeChineseVariant(normalized)
+  if (chinese) return chinese
 
   return INTERFACE_LANGUAGE_OPTIONS.some((lang) => lang.code === normalized)
     ? normalized
