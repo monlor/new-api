@@ -78,7 +78,7 @@ function FooterLinkItem(props: { link: FooterLink }) {
 // Renders User Agreement / Privacy Policy links inline with the parent's
 // copyright row when either is configured in System Settings → Site. Emits
 // fragmented siblings so the parent flex container's gap controls spacing.
-function LegalLinks(props: { leadingSeparator?: boolean }) {
+function LegalLinks(props: { leadingSeparator?: boolean; withWrapper?: boolean }) {
   const { t } = useTranslation()
   const { status } = useStatus()
   const items: { key: string; label: string; href: string }[] = []
@@ -99,7 +99,7 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
   if (items.length === 0) {
     return null
   }
-  return (
+  const links = (
     <>
       {items.map((item, index) => (
         <Fragment key={item.key}>
@@ -118,6 +118,14 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
       ))}
     </>
   )
+  if (props.withWrapper) {
+    return (
+      <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs'>
+        {links}
+      </div>
+    )
+  }
+  return links
 }
 
 // inline=true returns just the inner span for composition in a parent flex
@@ -230,15 +238,12 @@ export function Footer(props: FooterProps) {
         )}
       >
         <div className='mx-auto w-full max-w-6xl px-6 py-5'>
-          <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-between gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:flex-row sm:px-5'>
+          <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-center gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:px-5'>
             <div
-              className='custom-footer text-muted-foreground min-w-0 text-center text-sm sm:text-left'
+              className='custom-footer text-muted-foreground w-full text-center text-sm'
               dangerouslySetInnerHTML={{ __html: footerHtml }}
             />
-            <div className='border-border/60 text-muted-foreground/45 flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
-              <LegalLinks />
-              <ProjectAttribution currentYear={currentYear} inline />
-            </div>
+            <LegalLinks withWrapper />
           </div>
         </div>
       </footer>
@@ -291,15 +296,14 @@ export function Footer(props: FooterProps) {
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
-          <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
+        <div className='border-border/30 mt-12 border-t pt-6'>
+          <div className='text-muted-foreground/40 flex w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs'>
             <span>
               &copy; {currentYear} {displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}
             </span>
             <LegalLinks leadingSeparator />
           </div>
-          <ProjectAttribution currentYear={currentYear} />
         </div>
       </div>
     </footer>
