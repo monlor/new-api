@@ -164,10 +164,12 @@ function getConfig(): CurrencyConfig {
       currency?.customCurrencySymbol?.trim() ||
       DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
   }
-  // Language-driven override: Chinese UI → CNY display using admin-configured usdExchangeRate.
+  // Language-driven override: Simplified Chinese UI → CNY display using admin-configured usdExchangeRate.
+  // Only applies to 'zh' (Simplified Chinese), not 'zh-TW' (Traditional Chinese).
   // Reads the i18n singleton directly (not a React hook), so this only works in browser context.
   // Tests that call these formatting functions must initialise i18n first.
-  if (i18n.language?.startsWith('zh')) {
+  const lang = i18n.language
+  if (lang === 'zh' || (lang?.startsWith('zh-') && !lang.startsWith('zh-TW'))) {
     result.quotaDisplayType = 'CNY'
   }
   return result
