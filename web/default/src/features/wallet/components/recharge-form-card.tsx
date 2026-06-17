@@ -33,8 +33,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatCurrencyFromUSD } from '@/lib/currency'
 import {
-  formatPaymentCurrency,
   getDiscountLabel,
   getPaymentIcon,
   getMinTopupAmount,
@@ -101,7 +101,6 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
-  const paymentCurrency = topupInfo?.payment_currency ?? 'CNY'
 
   useEffect(() => {
     setLocalAmount(topupAmount.toString())
@@ -232,7 +231,7 @@ export function RechargeFormCard({
                         >
                           <div className='flex w-full items-center justify-between gap-2'>
                             <span className='text-base font-semibold sm:text-lg'>
-                              {formatPaymentCurrency(displayAmount, paymentCurrency)}
+                              {formatCurrencyFromUSD(displayAmount)}
                             </span>
                             {hasDiscount && (
                               <span className='shrink-0 text-xs font-medium text-green-600'>
@@ -269,7 +268,7 @@ export function RechargeFormCard({
                       {t('Amount to pay:')}
                     </span>
                     <span className='text-sm font-semibold'>
-                      {formatPaymentCurrency(topupAmount, paymentCurrency)}
+                      {formatCurrencyFromUSD(topupAmount)}
                     </span>
                   </div>
                 </div>
@@ -292,7 +291,7 @@ export function RechargeFormCard({
                           variant='outline'
                           onClick={() => onPaymentMethodSelect(method)}
                           disabled={disabled || !!paymentLoading}
-                          className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
+                          className='h-9 min-w-0 w-full justify-start gap-2 rounded-lg px-3'
                         >
                           {paymentLoading === method.type ? (
                             <Loader2 className='h-4 w-4 animate-spin' />
@@ -311,7 +310,12 @@ export function RechargeFormCard({
                       return disabled ? (
                         <TooltipProvider key={method.type}>
                           <Tooltip>
-                            <TooltipTrigger render={button}></TooltipTrigger>
+                            <TooltipTrigger
+                              className='inline-flex cursor-not-allowed'
+                              render={<span />}
+                            >
+                              {button}
+                            </TooltipTrigger>
                             <TooltipContent>
                               {t('Minimum topup amount: {{amount}}', {
                                 amount: effectiveMin,
@@ -354,7 +358,7 @@ export function RechargeFormCard({
                             variant='outline'
                             onClick={() => onWaffoMethodSelect(method, index)}
                             disabled={belowMin || !!paymentLoading}
-                            className='h-9 min-w-0 justify-start gap-2 rounded-lg px-3'
+                            className='h-9 min-w-0 w-full justify-start gap-2 rounded-lg px-3'
                           >
                             {paymentLoading === loadingKey ? (
                               <Loader2 className='h-4 w-4 animate-spin' />
@@ -374,7 +378,12 @@ export function RechargeFormCard({
                         return belowMin ? (
                           <TooltipProvider key={`${method.name}-${index}`}>
                             <Tooltip>
-                              <TooltipTrigger render={button}></TooltipTrigger>
+                              <TooltipTrigger
+                                className='inline-flex cursor-not-allowed'
+                                render={<span />}
+                              >
+                                {button}
+                              </TooltipTrigger>
                               <TooltipContent>
                                 {t('Minimum topup amount: {{amount}}', {
                                   amount: waffoMin,

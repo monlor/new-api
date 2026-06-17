@@ -78,6 +78,7 @@ For commercial licensing, please contact support@quantumnous.com
  * 4. **Billing displays**: Use formatBillingCurrencyFromUSD() to avoid token display
  * 5. **Effective exchange rate**: When quotaDisplayType is 'USD', use rate of 1 regardless of config
  */
+import i18n from '@/i18n/config'
 import {
   useSystemConfigStore,
   DEFAULT_CURRENCY_CONFIG,
@@ -143,7 +144,7 @@ export function parseCurrencyDisplayType(
 function getConfig(): CurrencyConfig {
   const { config } = useSystemConfigStore.getState()
   const currency = config?.currency ?? DEFAULT_CURRENCY_CONFIG
-  return {
+  const result: CurrencyConfig = {
     ...DEFAULT_CURRENCY_CONFIG,
     ...currency,
     quotaPerUnit:
@@ -163,6 +164,13 @@ function getConfig(): CurrencyConfig {
       currency?.customCurrencySymbol?.trim() ||
       DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
   }
+  // Language-driven override: Chinese UI → CNY display using admin-configured usdExchangeRate.
+  // Reads the i18n singleton directly (not a React hook), so this only works in browser context.
+  // Tests that call these formatting functions must initialise i18n first.
+  if (i18n.language?.startsWith('zh')) {
+    result.quotaDisplayType = 'CNY'
+  }
+  return result
 }
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {

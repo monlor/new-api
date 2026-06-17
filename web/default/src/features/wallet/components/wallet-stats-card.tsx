@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Activity, BarChart3, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
-import { useSystemConfig } from '@/hooks/use-system-config'
+import { formatQuotaWithCurrency } from '@/lib/currency'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatPaymentCurrency } from '../lib'
 import type { TopupInfo, UserWalletData } from '../types'
 
 interface WalletStatsCardProps {
@@ -32,17 +30,9 @@ interface WalletStatsCardProps {
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
-  const { currency } = useSystemConfig()
-
-  const quotaPerUnit =
-    currency?.quotaPerUnit && currency.quotaPerUnit > 0
-      ? currency.quotaPerUnit
-      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
-
-  const paymentCurrency = props.topupInfo?.payment_currency ?? 'CNY'
 
   const formatBalance = (quota: number) => {
-    return formatPaymentCurrency(quota / quotaPerUnit, paymentCurrency)
+    return formatQuotaWithCurrency(quota)
   }
 
   if (props.loading) {

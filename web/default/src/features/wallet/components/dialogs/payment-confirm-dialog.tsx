@@ -28,8 +28,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatPaymentCurrency, getPaymentIcon } from '../../lib'
+import { getPaymentIcon } from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -40,7 +41,6 @@ interface PaymentConfirmDialogProps {
   paymentMethod: PaymentMethod | undefined
   processing: boolean
   discountRate?: number
-  paymentCurrency?: string
 }
 
 export function PaymentConfirmDialog({
@@ -51,7 +51,6 @@ export function PaymentConfirmDialog({
   paymentMethod,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
-  paymentCurrency = 'CNY',
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1
@@ -77,11 +76,11 @@ export function PaymentConfirmDialog({
             </span>
             <div className='flex items-baseline gap-2'>
               <span className='text-2xl font-semibold'>
-                {formatPaymentCurrency(discountedAmount, paymentCurrency)}
+                {formatBillingCurrencyFromUSD(discountedAmount)}
               </span>
               {hasDiscount && (
                 <span className='text-muted-foreground text-sm line-through'>
-                  {formatPaymentCurrency(topupAmount, paymentCurrency)}
+                  {formatBillingCurrencyFromUSD(topupAmount)}
                 </span>
               )}
             </div>
@@ -92,7 +91,7 @@ export function PaymentConfirmDialog({
               <div className='flex items-center justify-between text-sm'>
                 <span className='text-muted-foreground'>{t('You save')}</span>
                 <span className='font-semibold text-green-600'>
-                  {formatPaymentCurrency(savedAmount, paymentCurrency)}
+                  {formatBillingCurrencyFromUSD(savedAmount)}
                 </span>
               </div>
             </div>

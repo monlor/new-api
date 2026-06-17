@@ -43,7 +43,7 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
-import { formatPaymentCurrency } from '@/features/wallet/lib/format'
+import { formatCurrencyFromUSD, formatQuotaWithCurrency } from '@/lib/currency'
 import {
   formatDuration,
   formatResetPeriod,
@@ -70,7 +70,6 @@ interface Props {
   purchaseCount?: number
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
-  paymentCurrency?: string
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
@@ -87,7 +86,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }, [props.open, props.epayMethods])
 
-  const paymentCurrency = props.paymentCurrency ?? 'CNY'
   const plan = props.plan?.plan
   if (!plan) return null
 
@@ -350,7 +348,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
           <Separator />
           <div className='flex items-center justify-between'>
             <span className='text-sm font-medium'>{t('Amount Due')}</span>
-            <span className='text-primary text-lg font-bold'>{formatPaymentCurrency(Number(price), paymentCurrency)}</span>
+            <span className='text-primary text-lg font-bold'>{formatCurrencyFromUSD(Number(price))}</span>
           </div>
         </div>
 
@@ -366,11 +364,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
         <div className='flex flex-col gap-2 rounded-md border p-3'>
           <div className='flex items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground'>{t('Required')}</span>
-            <span>{formatPaymentCurrency(Number(plan.price_amount || 0), paymentCurrency)}</span>
+            <span>{formatCurrencyFromUSD(Number(plan.price_amount || 0))}</span>
           </div>
           <div className='flex items-center justify-between gap-2 text-xs'>
             <span className='text-muted-foreground'>{t('Available')}</span>
-            <span>{formatPaymentCurrency(userQuota / quotaPerUnit, paymentCurrency)}</span>
+            <span>{formatQuotaWithCurrency(userQuota)}</span>
           </div>
           {!allowBalancePay ? (
             <Alert variant='destructive'>

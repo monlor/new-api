@@ -301,7 +301,6 @@ export function Wallet(props: WalletProps) {
         paymentMethod={selectedPaymentMethod}
         processing={processing || pancakeProcessing}
         discountRate={getDiscountRate()}
-        paymentCurrency={topupInfo?.payment_currency ?? 'CNY'}
       />
 
       <TransferDialog
