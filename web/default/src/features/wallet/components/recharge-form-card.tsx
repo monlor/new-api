@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -33,7 +33,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+  getCurrencyDisplay,
+  getCurrencyLabel,
+} from '@/lib/currency'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 import {
   getDiscountLabel,
   getPaymentIcon,
@@ -47,6 +53,22 @@ import type {
   WaffoPayMethod,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+
+// These helpers read from the Zustand store on each call and have no component
+// dependencies, so they live at module level — stable references, no closure issues.
+function usdToDisplay(usd: number): number {
+  const { meta } = getCurrencyDisplay()
+  if (meta.kind === 'tokens') return usd
+  const rate = meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
+  return usd * rate
+}
+
+function displayToUsd(display: number): number {
+  const { meta } = getCurrencyDisplay()
+  if (meta.kind === 'tokens') return display
+  const rate = meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
+  return rate > 0 ? display / rate : display
+}
 
 interface RechargeFormCardProps {
   topupInfo: TopupInfo | null
@@ -99,18 +121,34 @@ export function RechargeFormCard({
   onWaffoMethodSelect,
   enableWaffoPancakeTopup,
 }: RechargeFormCardProps) {
-  const { t } = useTranslation()
-  const [localAmount, setLocalAmount] = useState(topupAmount.toString())
+  const { t, i18n } = useTranslation()
+  const currencyConfig = useSystemConfigStore((s) => s.config.currency)
+
+  // Read currency label at render time for the label display.
+  // getCurrencyLabel() and getCurrencyDisplay() read from the zustand store directly,
+  // so they always return the latest config when called during render.
+  const currencyLabel = getCurrencyLabel()
+
+  const [localAmount, setLocalAmount] = useState(usdToDisplay(topupAmount).toString())
+
+  // While the user is focused on the input, suppress syncing from parent so
+  // typing (including clearing) never snaps back.
+  const isEditingRef = useRef(false)
 
   useEffect(() => {
-    setLocalAmount(topupAmount.toString())
-  }, [topupAmount])
+    if (!isEditingRef.current) {
+      const raw = usdToDisplay(topupAmount)
+      setLocalAmount(parseFloat(raw.toFixed(2)).toString())
+    }
+  }, [topupAmount, i18n.language, currencyConfig])
 
   const handleAmountChange = (value: string) => {
     setLocalAmount(value)
-    const numValue = parseInt(value) || 0
-    if (numValue >= 0) {
-      onTopupAmountChange(numValue)
+    const numValue = parseFloat(value)
+    // Allow 0 to propagate so the parent doesn't stay stale when the field is cleared.
+    // Negative values are ignored; NaN (empty string) leaves parent unchanged.
+    if (!isNaN(numValue) && numValue >= 0) {
+      onTopupAmountChange(displayToUsd(numValue))
     }
   }
 
@@ -125,6 +163,7 @@ export function RechargeFormCard({
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
   const minTopup = getMinTopupAmount(topupInfo)
+  const minTopupDisplay = usdToDisplay(minTopup)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
 
   if (loading) {
@@ -252,15 +291,22 @@ export function RechargeFormCard({
                   className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
                 >
                   {t('Custom Amount')}
+                  {getCurrencyDisplay().meta.kind !== 'tokens' && (
+                    <span className='text-muted-foreground/60 ml-1 normal-case'>
+                      ({currencyLabel})
+                    </span>
+                  )}
                 </Label>
                 <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
                   <Input
                     id='topup-amount'
-                    type='number'
+                    type='text'
+                    inputMode='decimal'
                     value={localAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
-                    min={minTopup}
-                    placeholder={`Minimum ${minTopup}`}
+                    onFocus={() => { isEditingRef.current = true }}
+                    onBlur={() => { isEditingRef.current = false }}
+                    placeholder={`Minimum ${minTopupDisplay}`}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
                   <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
