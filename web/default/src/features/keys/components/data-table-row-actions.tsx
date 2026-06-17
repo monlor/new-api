@@ -25,6 +25,7 @@ import {
   PowerOff,
   ExternalLink,
   ArrowRightLeft,
+  Code2,
   Copy,
   Link,
   Loader2,
@@ -197,28 +198,25 @@ export function DataTableRowActions<TData>({
             <Button
               variant='ghost'
               size='icon-sm'
-              onClick={handleToggleStatus}
-              disabled={isTogglingStatus}
-              aria-label={isEnabled ? t('Disable') : t('Enable')}
-              className={
-                isEnabled
-                  ? 'text-destructive hover:text-destructive'
-                  : 'text-emerald-600 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-400'
-              }
+              onClick={async () => {
+                const realKey = await resolveRealKey(apiKey.id)
+                if (!realKey) return
+                setResolvedKey(realKey)
+                setCurrentRow(apiKey)
+                setOpen('use-api-key')
+              }}
+              disabled={isRealKeyLoading}
+              aria-label={t('Use API Key')}
             />
           }
         >
-          {isTogglingStatus ? (
+          {isRealKeyLoading ? (
             <Loader2 className='size-4 animate-spin' />
-          ) : isEnabled ? (
-            <PowerOff className='size-4' />
           ) : (
-            <Power className='size-4' />
+            <Code2 className='size-4' />
           )}
         </TooltipTrigger>
-        <TooltipContent>
-          {isEnabled ? t('Disable') : t('Enable')}
-        </TooltipContent>
+        <TooltipContent>{t('Use API Key')}</TooltipContent>
       </Tooltip>
 
       <DropdownMenu modal={false} onOpenChange={handleMenuOpenChange}>
@@ -311,6 +309,26 @@ export function DataTableRowActions<TData>({
             </DropdownMenuSub>
           )}
           <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={handleToggleStatus}
+            disabled={isTogglingStatus}
+            className={
+              isEnabled
+                ? 'text-destructive focus:text-destructive'
+                : 'text-emerald-600 focus:text-emerald-600 dark:text-emerald-400 dark:focus:text-emerald-400'
+            }
+          >
+            {isTogglingStatus ? (
+              <Loader2 className='size-4 animate-spin' />
+            ) : isEnabled ? (
+              t('Disable')
+            ) : (
+              t('Enable')
+            )}
+            <DropdownMenuShortcut>
+              {isEnabled ? <PowerOff size={16} /> : <Power size={16} />}
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => {
               setCurrentRow(apiKey)
