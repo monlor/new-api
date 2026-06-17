@@ -24,6 +24,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CopyButton } from '@/components/copy-button'
+import { useStatus } from '@/hooks/use-status'
 import type { UserWalletData } from '../types'
 
 interface AffiliateRewardsCardProps {
@@ -42,6 +43,9 @@ export function AffiliateRewardsCard({
   loading,
 }: AffiliateRewardsCardProps) {
   const { t } = useTranslation()
+  const { status } = useStatus()
+  const quotaForInviter = Number(status?.quota_for_inviter || 0)
+  const quotaForInvitee = Number(status?.quota_for_invitee || 0)
   if (loading) {
     return (
       <Card data-card-hover='false' className='bg-muted/20 py-0'>
@@ -70,10 +74,11 @@ export function AffiliateRewardsCard({
             <h3 className='truncate text-sm font-semibold'>
               {t('Referral Program')}
             </h3>
-            <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {t(
-                'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
-              )}
+            <p className='text-muted-foreground text-xs'>
+              {t('Inviter gets {{inviter}}, invitee gets {{invitee}}.', {
+                inviter: formatQuota(quotaForInviter),
+                invitee: formatQuota(quotaForInvitee),
+              })}
             </p>
           </div>
         </div>
