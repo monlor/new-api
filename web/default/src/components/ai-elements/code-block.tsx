@@ -29,8 +29,9 @@ import {
 } from 'react'
 import { CheckIcon, CopyIcon } from 'lucide-react'
 import {
+  bundledLanguages,
   type BundledLanguage,
-  codeToHtml,
+  getSingletonHighlighter,
   type ShikiTransformer,
 } from 'shiki/bundle/web'
 import { cn } from '@/lib/utils'
@@ -38,7 +39,7 @@ import { Button } from '@/components/ui/button'
 
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string
-  language: BundledLanguage
+  language: BundledLanguage | string
   showLineNumbers?: boolean
 }
 
@@ -71,16 +72,41 @@ const lineNumberTransformer: ShikiTransformer = {
   },
 }
 
+const EXTRA_LANGS: Record<string, () => Promise<unknown>> = {
+  toml: () => import('shiki/dist/langs/toml.mjs'),
+}
+
 export async function highlightCode(
   code: string,
-  language: BundledLanguage,
+  language: BundledLanguage | string,
   showLineNumbers = false
 ) {
   const transformers: ShikiTransformer[] = showLineNumbers
     ? [lineNumberTransformer]
     : []
 
-  return codeToHtml(code, {
+  const inBundle = language in bundledLanguages
+  const hasExtra = language in EXTRA_LANGS
+
+  if (!inBundle && !hasExtra) {
+    const escaped = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    return `<pre style="margin:0;padding:1rem;font-size:0.875rem"><code>${escaped}</code></pre>`
+  }
+
+  const h = await getSingletonHighlighter({
+    themes: ['one-light', 'one-dark-pro'],
+    langs: inBundle ? [language as BundledLanguage] : [],
+  })
+
+  if (hasExtra && !h.getLoadedLanguages().includes(language)) {
+    const lang = await EXTRA_LANGS[language]()
+    await h.loadLanguage(lang as Parameters<typeof h.loadLanguage>[0])
+  }
+
+  return h.codeToHtml(code, {
     lang: language,
     themes: {
       light: 'one-light',
@@ -102,11 +128,20 @@ export const CodeBlock = ({
 
   useEffect(() => {
     let cancelled = false
-    highlightCode(code, language, showLineNumbers).then((next) => {
-      if (!cancelled) {
-        setHtml(next)
-      }
-    })
+    highlightCode(code, language, showLineNumbers)
+      .then((next) => {
+        if (!cancelled) setHtml(next)
+      })
+      .catch(() => {
+        // Unsupported language — fall back to escaped plaintext inside a <pre>
+        if (!cancelled) {
+          const escaped = code
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+          setHtml(`<pre style="margin:0;padding:1rem;font-size:0.875rem"><code>${escaped}</code></pre>`)
+        }
+      })
     return () => {
       cancelled = true
     }
