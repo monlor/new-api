@@ -22,6 +22,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getCurrencyLabel } from '@/lib/currency'
+import { quotaUnitsToDollars, parseQuotaFromDollars } from '@/lib/format'
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 import {
   Form,
@@ -134,7 +136,9 @@ const buildFormDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): MonitoringFormInput => ({
   ChannelDisableThreshold: defaults.ChannelDisableThreshold ?? '',
-  QuotaRemindThreshold: defaults.QuotaRemindThreshold ?? '',
+  QuotaRemindThreshold: defaults.QuotaRemindThreshold
+    ? String(quotaUnitsToDollars(Number(defaults.QuotaRemindThreshold)))
+    : '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -154,7 +158,9 @@ const normalizeDefaults = (
   defaults: MonitoringSettingsSectionProps['defaultValues']
 ): NormalizedMonitoringValues => ({
   ChannelDisableThreshold: (defaults.ChannelDisableThreshold ?? '').trim(),
-  QuotaRemindThreshold: (defaults.QuotaRemindThreshold ?? '').trim(),
+  QuotaRemindThreshold: defaults.QuotaRemindThreshold
+    ? String(quotaUnitsToDollars(Number(defaults.QuotaRemindThreshold.trim())))
+    : '',
   AutomaticDisableChannelEnabled: defaults.AutomaticDisableChannelEnabled,
   AutomaticEnableChannelEnabled: defaults.AutomaticEnableChannelEnabled,
   AutomaticDisableKeywords: normalizeLineEndings(
@@ -238,7 +244,10 @@ export function MonitoringSettingsSection({
     }
 
     for (const key of updates) {
-      const value = normalized[key]
+      let value = normalized[key]
+      if (key === 'QuotaRemindThreshold' && value !== '') {
+        value = String(parseQuotaFromDollars(Number(value)))
+      }
       await updateOption.mutateAsync({
         key,
         value,
@@ -333,12 +342,16 @@ export function MonitoringSettingsSection({
               name='QuotaRemindThreshold'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Quota reminder (tokens)')}</FormLabel>
+                  <FormLabel>
+                    {t('Quota reminder ({{currency}})', {
+                      currency: getCurrencyLabel(),
+                    })}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type='number'
                       min={0}
-                      step={1}
+                      step='any'
                       value={field.value}
                       onChange={(event) => field.onChange(event.target.value)}
                     />

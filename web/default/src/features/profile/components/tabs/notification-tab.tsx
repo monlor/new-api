@@ -21,6 +21,8 @@ import { Bell, Loader2, Mail, Server, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ROLE } from '@/lib/roles'
+import { getCurrencyLabel } from '@/lib/currency'
+import { quotaUnitsToDollars, parseQuotaFromDollars } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -131,6 +133,9 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   }
 
   const notifyType = normalizeNotifyType(settings.notify_type)
+  const thresholdDisplay = quotaUnitsToDollars(
+    settings.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD
+  )
 
   return (
     <div className='space-y-4 sm:space-y-6'>
@@ -170,14 +175,23 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
 
       {/* Warning Threshold */}
       <div className='space-y-1.5'>
-        <Label htmlFor='threshold'>{t('Quota Warning Threshold')}</Label>
+        <Label htmlFor='threshold'>
+          {t('Quota Warning Threshold ({{currency}})', {
+            currency: getCurrencyLabel(),
+          })}
+        </Label>
         <Input
           id='threshold'
           type='number'
           className='h-9'
-          value={settings.quota_warning_threshold}
+          step='any'
+          min={0}
+          value={thresholdDisplay}
           onChange={(e) =>
-            updateField('quota_warning_threshold', Number(e.target.value))
+            updateField(
+              'quota_warning_threshold',
+              parseQuotaFromDollars(Number(e.target.value))
+            )
           }
           placeholder={t('Enter threshold')}
         />
