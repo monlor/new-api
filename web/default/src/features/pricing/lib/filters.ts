@@ -99,6 +99,21 @@ export function filterByEndpointType(
 }
 
 /**
+ * Filter models by availability (wallet or subscription)
+ */
+export function filterByAvailability(
+  models: PricingModel[],
+  availability: string
+): PricingModel[] {
+  if (availability === 'all' || !availability) return models
+  if (availability === 'wallet')
+    return models.filter((m) => m.wallet_available === true)
+  if (availability === 'subscription')
+    return models.filter((m) => m.subscription_available === true)
+  return models
+}
+
+/**
  * Get model price for sorting
  */
 function getModelPrice(model: PricingModel): number {
@@ -143,6 +158,7 @@ export function filterAndSortModels(
     quotaType: string
     endpointType: string
     tag: string
+    availability: string
     sortBy: string
   }
 ): PricingModel[] {
@@ -152,6 +168,7 @@ export function filterAndSortModels(
   result = filterByQuotaType(result, filters.quotaType)
   result = filterByEndpointType(result, filters.endpointType)
   result = filterByTag(result, filters.tag)
+  result = filterByAvailability(result, filters.availability)
   result = sortModels(result, filters.sortBy)
 
   return result

@@ -96,6 +96,27 @@ export function getEndpointTypeLabels(
   }
 }
 
+/** Availability type options */
+export const AVAILABILITY_TYPES = {
+  ALL: 'all',
+  WALLET: 'wallet',
+  SUBSCRIPTION: 'subscription',
+} as const
+
+export type AvailabilityTypeOption =
+  (typeof AVAILABILITY_TYPES)[keyof typeof AVAILABILITY_TYPES]
+
+/** Availability type labels */
+export function getAvailabilityTypeLabels(
+  t: TFunction
+): Record<AvailabilityTypeOption, string> {
+  return {
+    [AVAILABILITY_TYPES.ALL]: t('All'),
+    [AVAILABILITY_TYPES.WALLET]: t('Balance Available'),
+    [AVAILABILITY_TYPES.SUBSCRIPTION]: t('Subscription Available'),
+  }
+}
+
 /** Filter section keys */
 export const FILTER_SECTIONS = {
   PRICING_TYPE: 'pricingType',
@@ -103,6 +124,7 @@ export const FILTER_SECTIONS = {
   VENDOR: 'vendor',
   GROUP: 'group',
   TAG: 'tag',
+  AVAILABILITY: 'availability',
 } as const
 
 /** Maximum number of tags to display in model row */

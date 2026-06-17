@@ -60,6 +60,7 @@ export function Pricing() {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    availabilityFilter,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -70,6 +71,7 @@ export function Pricing() {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
+    setAvailabilityFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,
@@ -205,11 +207,13 @@ export function Pricing() {
               vendorFilter={vendorFilter}
               groupFilter={groupFilter}
               tagFilter={tagFilter}
+              availabilityFilter={availabilityFilter}
               onQuotaTypeChange={setQuotaTypeFilter}
               onEndpointTypeChange={setEndpointTypeFilter}
               onVendorChange={setVendorFilter}
               onGroupChange={setGroupFilter}
               onTagChange={setTagFilter}
+              onAvailabilityChange={setAvailabilityFilter}
               vendors={vendors || []}
               groups={availableGroups}
               groupRatios={groupRatio}
@@ -237,11 +241,13 @@ export function Pricing() {
                 vendorFilter={vendorFilter}
                 groupFilter={groupFilter}
                 tagFilter={tagFilter}
+                availabilityFilter={availabilityFilter}
                 onQuotaTypeChange={setQuotaTypeFilter}
                 onEndpointTypeChange={setEndpointTypeFilter}
                 onVendorChange={setVendorFilter}
                 onGroupChange={setGroupFilter}
                 onTagChange={setTagFilter}
+                onAvailabilityChange={setAvailabilityFilter}
                 vendors={vendors || []}
                 groups={availableGroups}
                 groupRatios={groupRatio}

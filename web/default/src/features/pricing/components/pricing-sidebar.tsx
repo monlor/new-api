@@ -32,6 +32,7 @@ import {
   ENDPOINT_TYPES,
   FILTER_ALL,
   QUOTA_TYPES,
+  getAvailabilityTypeLabels,
   getEndpointTypeLabels,
   getQuotaTypeLabels,
 } from '../constants'
@@ -59,11 +60,13 @@ export interface PricingSidebarProps {
   vendorFilter: string
   groupFilter: string
   tagFilter: string
+  availabilityFilter: string
   onQuotaTypeChange: (value: string) => void
   onEndpointTypeChange: (value: string) => void
   onVendorChange: (value: string) => void
   onGroupChange: (value: string) => void
   onTagChange: (value: string) => void
+  onAvailabilityChange: (value: string) => void
   vendors: PricingVendor[]
   groups: string[]
   groupRatios?: Record<string, number>
@@ -158,6 +161,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
   const { t } = useTranslation()
   const quotaTypeLabels = getQuotaTypeLabels(t)
   const endpointTypeLabels = getEndpointTypeLabels(t)
+  const availabilityTypeLabels = getAvailabilityTypeLabels(t)
 
   const vendorOptions: FilterOption[] = [
     {
@@ -243,6 +247,27 @@ export function PricingSidebar(props: PricingSidebarProps) {
       })),
   ]
 
+  const availabilityOptions: FilterOption[] = [
+    {
+      value: 'all',
+      label: availabilityTypeLabels.all,
+      count: props.models.length,
+    },
+    {
+      value: 'wallet',
+      label: availabilityTypeLabels.wallet,
+      count: countBy(props.models, (model) => model.wallet_available === true),
+    },
+    {
+      value: 'subscription',
+      label: availabilityTypeLabels.subscription,
+      count: countBy(
+        props.models,
+        (model) => model.subscription_available === true
+      ),
+    },
+  ]
+
   return (
     <aside className={cn('rounded-xl border p-3', props.className)}>
       <div className='mb-2.5 flex items-center justify-between gap-2'>
@@ -301,6 +326,12 @@ export function PricingSidebar(props: PricingSidebarProps) {
           value={props.endpointTypeFilter}
           options={endpointOptions}
           onChange={props.onEndpointTypeChange}
+        />
+        <FilterSection
+          title={t('Availability')}
+          value={props.availabilityFilter}
+          options={availabilityOptions}
+          onChange={props.onAvailabilityChange}
         />
       </div>
     </aside>

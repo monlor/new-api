@@ -38,6 +38,7 @@ type FilterState = {
   quotaType?: string
   endpointType?: string
   tag?: string
+  availability?: string
   tokenUnit?: TokenUnit
   view?: ViewMode
   rechargePrice?: boolean
@@ -60,6 +61,7 @@ export function useFilters(models: PricingModel[]) {
     quotaType: search.quotaType,
     endpointType: search.endpointType,
     tag: search.tag,
+    availability: search.availability,
     tokenUnit: search.tokenUnit,
     view: search.view,
     rechargePrice: search.rechargePrice,
@@ -72,6 +74,7 @@ export function useFilters(models: PricingModel[]) {
   const quotaTypeFilter = filterState.quotaType || QUOTA_TYPES.ALL
   const endpointTypeFilter = filterState.endpointType || ENDPOINT_TYPES.ALL
   const tagFilter = filterState.tag || FILTER_ALL
+  const availabilityFilter = filterState.availability || FILTER_ALL
   const tokenUnit: TokenUnit =
     filterState.tokenUnit === 'K' ? 'K' : DEFAULT_TOKEN_UNIT
   const viewMode = normalizeViewMode(filterState.view)
@@ -122,6 +125,13 @@ export function useFilters(models: PricingModel[]) {
     (v: string) => updateFilters({ tag: v === FILTER_ALL ? undefined : v }),
     [updateFilters]
   )
+  const setAvailabilityFilter = useCallback(
+    (v: string) =>
+      updateFilters({
+        availability: v === FILTER_ALL ? undefined : v,
+      }),
+    [updateFilters]
+  )
   const setTokenUnit = useCallback(
     (v: TokenUnit) =>
       updateFilters({ tokenUnit: v === DEFAULT_TOKEN_UNIT ? undefined : v }),
@@ -152,6 +162,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: quotaTypeFilter,
       endpointType: endpointTypeFilter,
       tag: tagFilter,
+      availability: availabilityFilter,
       sortBy,
     })
   }, [
@@ -162,6 +173,7 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    availabilityFilter,
     sortBy,
   ])
 
@@ -171,8 +183,9 @@ export function useFilters(models: PricingModel[]) {
       groupFilter !== FILTER_ALL ||
       quotaTypeFilter !== QUOTA_TYPES.ALL ||
       endpointTypeFilter !== ENDPOINT_TYPES.ALL ||
-      tagFilter !== FILTER_ALL,
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      tagFilter !== FILTER_ALL ||
+      availabilityFilter !== FILTER_ALL,
+    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter, availabilityFilter]
   )
 
   const activeFilterCount = useMemo(
@@ -181,8 +194,9 @@ export function useFilters(models: PricingModel[]) {
       (groupFilter !== FILTER_ALL ? 1 : 0) +
       (quotaTypeFilter !== QUOTA_TYPES.ALL ? 1 : 0) +
       (endpointTypeFilter !== ENDPOINT_TYPES.ALL ? 1 : 0) +
-      (tagFilter !== FILTER_ALL ? 1 : 0),
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      (tagFilter !== FILTER_ALL ? 1 : 0) +
+      (availabilityFilter !== FILTER_ALL ? 1 : 0),
+    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter, availabilityFilter]
   )
 
   const clearFilters = useCallback(() => {
@@ -192,6 +206,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: undefined,
       endpointType: undefined,
       tag: undefined,
+      availability: undefined,
     })
   }, [updateFilters])
 
@@ -207,6 +222,7 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    availabilityFilter,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -217,6 +233,7 @@ export function useFilters(models: PricingModel[]) {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
+    setAvailabilityFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,
