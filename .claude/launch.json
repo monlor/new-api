@@ -3,18 +3,12 @@
   "configurations": [
     {
       "name": "frontend-default",
-      "runtimeExecutable": "bun",
+      "comment": "Per Rule 8 the dev server runs via docker-compose.dev.yml (service 'frontend' on :3001), not locally. preview_start insists on owning its port, so this thin proxy (3100 -> docker :3001) lets the preview attach without spawning a competing bun dev server or touching the container.",
+      "runtimeExecutable": "node",
       "runtimeArgs": [
-        "--cwd=/Users/monlor/Workspace/new-api/web/default",
-        "run",
-        "dev",
-        "--",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "3001"
+        "/Users/monlor/Workspace/new-api/.claude/preview-proxy.cjs"
       ],
-      "port": 3001,
+      "port": 3100,
       "autoPort": false
     },
     {
