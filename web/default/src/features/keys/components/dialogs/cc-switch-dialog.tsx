@@ -57,7 +57,7 @@ type AppType = keyof typeof APP_CONFIGS
 type ApiInfoEntry = {
   id: number
   url: string
-  description: string
+  route: string
 }
 
 function buildCCSwitchURL(
@@ -112,8 +112,7 @@ export function CCSwitchDialog(props: Props) {
           .map((item, idx) => ({
             id: typeof item.id === 'number' ? item.id : idx,
             url: item.url as string,
-            description:
-              typeof item.description === 'string' ? item.description : '',
+            route: typeof item.route === 'string' ? item.route : '',
           }))
       : []
     return { apiInfoList: list, serverAddress: addr }
@@ -123,7 +122,7 @@ export function CCSwitchDialog(props: Props) {
     () =>
       apiInfoList.map((item) => ({
         value: item.url,
-        label: item.description ? `${item.description} (${item.url})` : item.url,
+        label: item.route ? `${item.route} (${item.url})` : item.url,
       })),
     [apiInfoList]
   )

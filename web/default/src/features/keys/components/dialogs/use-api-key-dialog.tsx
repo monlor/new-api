@@ -33,7 +33,7 @@ import {
 import type { BundledLanguage } from 'shiki/bundle/web'
 import { Dialog } from '@/components/dialog'
 
-type ApiInfoEntry = { id: number; url: string; description: string }
+type ApiInfoEntry = { id: number; url: string; route: string }
 type ClaudePlatform = 'unix' | 'win-cmd' | 'win-ps'
 type CodexPlatform = 'unix' | 'windows'
 
@@ -50,8 +50,7 @@ function parseApiInfo(status: Record<string, unknown> | null): {
         .map((item, idx) => ({
           id: typeof item.id === 'number' ? item.id : idx,
           url: item.url as string,
-          description:
-            typeof item.description === 'string' ? item.description : '',
+          route: typeof item.route === 'string' ? item.route : '',
         }))
     : []
   return { apiInfoList: list, serverAddress: addr }
@@ -265,7 +264,7 @@ export function UseApiKeyDialog(props: Props) {
     () =>
       apiInfoList.map((item) => ({
         value: item.url,
-        label: item.description ? `${item.description} (${item.url})` : item.url,
+        label: item.route ? `${item.route} (${item.url})` : item.url,
       })),
     [apiInfoList]
   )
