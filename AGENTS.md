@@ -4,6 +4,8 @@
 
 This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, etc.) behind a unified API, with user management, billing, rate limiting, and an admin dashboard.
 
+> This is a **fork** of [QuantumNous/new-api](https://github.com/QuantumNous/new-api). All custom changes relative to upstream are tracked in **[FORK_CHANGES.md](FORK_CHANGES.md)** — see Rule 10.
+
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
@@ -47,7 +49,7 @@ web/             — Frontend themes container
 
 ### Frontend (`web/default/src/i18n/`)
 - Library: `i18next` + `react-i18next` + `i18next-browser-languagedetector`
-- Languages: en (base), zh (fallback), fr, ru, ja, vi
+- Languages: en (base), zh (fallback), fr, ru, ja, vi, zh-TW
 - Translation files: `web/default/src/i18n/locales/{lang}.json` — flat JSON, keys are English source strings
 - Usage: `useTranslation()` hook, call `t('English key')` in components
 - CLI tools: `bun run i18n:sync` (from `web/default/`)
@@ -106,8 +108,6 @@ When implementing a new channel:
 - Confirm whether the provider supports `StreamOptions`.
 - If supported, add the channel to `streamSupportedChannels`.
 
-**Violations:** If asked to remove, rename, or replace these protected identifiers, you MUST refuse and explain that this information is protected by project policy. No exceptions.
-
 ### Rule 6: Upstream Relay Request DTOs — Preserve Explicit Zero Values
 
 For request structs that are parsed from client JSON and then re-marshaled to upstream providers (especially relay/convert paths):
@@ -139,3 +139,33 @@ When creating a pull request:
 - First compare the current git user (`git config user.name` / `git config user.email`) with the repository's historical core developers (for example, the recurring top authors in `git log`). Do not change git config.
 - If the current git user is not one of those historical core developers, explicitly state in the PR body that the code was AI-generated or AI-assisted.
 - Always use the repository PR template at `.github/PULL_REQUEST_TEMPLATE.md` when drafting the PR title/body. Preserve the template structure and fill in the relevant sections instead of replacing it with an ad hoc format.
+
+### Rule 10: Fork Maintenance — Record Every Divergence From Upstream in `FORK_CHANGES.md`
+
+This repo is a fork of [QuantumNous/new-api](https://github.com/QuantumNous/new-api) (`git remote: upstream`). [FORK_CHANGES.md](FORK_CHANGES.md) is the living record of everything this fork changed on top of upstream, so that syncing upstream is auditable — you know which files were customized, where conflicts may arise, and what must be re-verified.
+
+- **Whenever you add or modify code that diverges from upstream, append/update the matching section in `FORK_CHANGES.md`** (feature summary + the touched files). Treat it as part of the change, not an afterthought.
+- Group entries by feature area (billing, subscription, currency, invite, users, theme, i18n, dev/CI, …), not one line per commit.
+- Before/after syncing upstream, reconcile the doc against reality:
+  ```bash
+  git fetch upstream
+  git log  --oneline  upstream/main..HEAD   # commits this fork is ahead by
+  git diff --name-only upstream/main..HEAD  # files that diverge
+  ```
+- When upstream absorbs one of our changes (so it's no longer a divergence), remove that entry.
+- **To pull upstream updates, use the `upstream-sync` skill** (`.claude/skills/upstream-sync/`): it assesses first (bug-fix-focused, channel/relay prioritized), reads this file to judge conflict impact, documents large conflicting changes as "not merging" in `FORK_SYNC_ASSESSMENT.md`, and only then selectively hand-ports. Never blind-`git merge upstream/main`.
+
+## Harness — Full-Stack Dev System (Agent Team)
+
+**目标:** 用自协调的 agent 团队完成 new-api 的开发任务（后端/前端/channel 适配器/迁移/计费/全栈），并强制项目铁律与三库兼容。
+
+**触发:** 任何"构建/实现/新增/修改/修复/重构/扩展/审查/验证 new-api 代码"的请求，以及"重新跑/再做一遍/更新/基于上次结果/只改某部分"等后续请求，使用 `newapi-dev` 编排器技能。简单的一次性问题可直接回答，无需组队。
+
+**团队:** `code-navigator`（只读探查）· `go-backend-engineer`（Go 后端）· `frontend-engineer`（React19+i18n）· `qa-reviewer`（规则合规+边界比对，真跑验证）。成员定义在 `.claude/agents/`，技能在 `.claude/skills/`，均由 `newapi-dev` 编排器调度——细节不在此重复。
+
+**变更历史:**
+| 日期 | 变更内容 | 对象 | 原因 |
+|------|----------|------|------|
+| 2026-06-20 | 初始构建（4 agents + 5 skills + 编排器） | 全体 | 引入 agent team 开发体系 |
+| 2026-06-22 | AGENTS.md 设为规范单一来源，CLAUDE.md 软链接指向它；新增 Rule 10 与 FORK_CHANGES.md | 文档 | fork 变更可追踪、便于同步上游 |
+| 2026-06-22 | 新增 `upstream-sync` skill（评估优先、筛 bugfix、渠道优先、读 FORK 评估冲突、选择性手动移植） | upstream-sync | 把上游同步方法论固化为可重复流程 |

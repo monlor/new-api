@@ -39,3 +39,6 @@ skills-lock.json
 
 tmp/
 graphify-out/
+
+# transient upstream-sync assessment (regenerated each sync)
+FORK_SYNC_ASSESSMENT.md
