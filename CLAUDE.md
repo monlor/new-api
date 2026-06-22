@@ -127,3 +127,16 @@ When creating a pull request:
 - First compare the current git user (`git config user.name` / `git config user.email`) with the repository's historical core developers (for example, the recurring top authors in `git log`). Do not change git config.
 - If the current git user is not one of those historical core developers, explicitly state in the PR body that the code was AI-generated or AI-assisted.
 - Always use the repository PR template at `.github/PULL_REQUEST_TEMPLATE.md` when drafting the PR title/body. Preserve the template structure and fill in the relevant sections instead of replacing it with an ad hoc format.
+
+## Harness — Full-Stack Dev System (Agent Team)
+
+**目标:** 用自协调的 agent 团队完成 new-api 的开发任务（后端/前端/channel 适配器/迁移/计费/全栈），并强制项目铁律与三库兼容。
+
+**触发:** 任何"构建/实现/新增/修改/修复/重构/扩展/审查/验证 new-api 代码"的请求，以及"重新跑/再做一遍/更新/基于上次结果/只改某部分"等后续请求，使用 `newapi-dev` 编排器技能。简单的一次性问题可直接回答，无需组队。
+
+**团队:** `code-navigator`（只读探查）· `go-backend-engineer`（Go 后端）· `frontend-engineer`（React19+i18n）· `qa-reviewer`（规则合规+边界比对，真跑验证）。成员定义在 `.claude/agents/`，技能在 `.claude/skills/`，均由 `newapi-dev` 编排器调度——细节不在此重复。
+
+**变更历史:**
+| 日期 | 变更内容 | 对象 | 原因 |
+|------|----------|------|------|
+| 2026-06-20 | 初始构建（4 agents + 5 skills + 编排器） | 全体 | 引入 agent team 开发体系 |
