@@ -25,6 +25,8 @@ import type {
   UserFormData,
   ManageUserAction,
   ManageUserQuotaPayload,
+  BatchUserAction,
+  BatchManageUsersResult,
   ApiResponse,
 } from './types'
 
@@ -112,6 +114,19 @@ export async function manageUser(
   action: ManageUserAction
 ): Promise<ApiResponse<Partial<User>>> {
   const res = await api.post('/api/user/manage', { id, action })
+  return res.data
+}
+
+/**
+ * Batch enable / disable / delete users.
+ * Returns per-batch outcome counts; `success` is true whenever the request
+ * itself is valid, even if some individual users failed.
+ */
+export async function batchManageUsers(
+  ids: number[],
+  action: BatchUserAction
+): Promise<ApiResponse<BatchManageUsersResult>> {
+  const res = await api.post('/api/user/manage/batch', { ids, action })
   return res.data
 }
 

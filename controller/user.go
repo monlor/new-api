@@ -1077,11 +1077,11 @@ func ManageUser(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	// 禁用 / 角色调整后，强制失效用户缓存与其全部令牌缓存，
-	// 避免在 Redis TTL 过期前仍使用旧状态（尤其是禁用后仍可发起请求的问题）。
+	// 启用 / 禁用 / 角色调整后，强制失效用户缓存与其全部令牌缓存，
+	// 避免在 Redis TTL 过期前仍使用旧状态（禁用后仍可发起请求，或重新启用后仍被旧的“禁用”缓存拦截）。
 	// InvalidateUserCache 会让下一次 GetUserCache 从数据库重新加载，
 	// InvalidateUserTokensCache 则确保令牌侧的缓存也同步刷新。
-	if req.Action == "disable" || req.Action == "promote" || req.Action == "demote" {
+	if req.Action == "enable" || req.Action == "disable" || req.Action == "promote" || req.Action == "demote" {
 		if err := model.InvalidateUserCache(user.Id); err != nil {
 			common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
 		}
@@ -1104,6 +1104,124 @@ func ManageUser(c *gin.Context) {
 		"data":    clearUser,
 	})
 	return
+}
+
+type ManageBatchRequest struct {
+	Ids    []int  `json:"ids"`
+	Action string `json:"action"`
+}
+
+type ManageBatchResult struct {
+	Succeeded int      `json:"succeeded"`
+	Failed    int      `json:"failed"`
+	Errors    []string `json:"errors"`
+}
+
+// batchUserError formats a per-user failure entry for batch operations.
+// The reason is already localized by the caller; the "ID %d" prefix is
+// language-neutral so the joined detail string reads correctly in any locale.
+func batchUserError(id int, reason string) string {
+	return fmt.Sprintf("ID %d: %s", id, reason)
+}
+
+// ManageUserBatch Only admin user can do this. Batch enable/disable/delete users.
+// Request body: { "ids": [1,2,3], "action": "enable"|"disable"|"delete" }
+// success is true whenever the request itself is valid (even if some ids fail);
+// per-user failures are reported via data.failed and data.errors.
+func ManageUserBatch(c *gin.Context) {
+	var req ManageBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Ids) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	switch req.Action {
+	case "enable", "disable", "delete":
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	myRole := c.GetInt("role")
+	result := ManageBatchResult{Errors: []string{}}
+
+	for _, id := range req.Ids {
+		user := model.User{Id: id}
+		model.DB.Unscoped().Where(&user).First(&user)
+		if user.Id == 0 {
+			result.Failed++
+			result.Errors = append(result.Errors, batchUserError(id, common.TranslateMessage(c, i18n.MsgUserNotExists)))
+			continue
+		}
+		if !canManageTargetRole(myRole, user.Role) {
+			result.Failed++
+			result.Errors = append(result.Errors, batchUserError(id, common.TranslateMessage(c, i18n.MsgUserNoPermissionHigherLevel)))
+			continue
+		}
+
+		switch req.Action {
+		case "disable":
+			if user.Role == common.RoleRootUser {
+				result.Failed++
+				result.Errors = append(result.Errors, batchUserError(id, common.TranslateMessage(c, i18n.MsgUserCannotDisableRootUser)))
+				continue
+			}
+			user.Status = common.UserStatusDisabled
+			if err := user.Update(false); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, batchUserError(id, err.Error()))
+				continue
+			}
+			// 禁用后强制失效用户缓存与其全部令牌缓存，避免 Redis TTL 过期前仍使用旧状态。
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
+			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+			}
+		case "enable":
+			user.Status = common.UserStatusEnabled
+			if err := user.Update(false); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, batchUserError(id, err.Error()))
+				continue
+			}
+			// 启用后同样失效用户缓存，避免此前禁用时写入 Redis 的旧状态在 TTL 过期前仍拦截该用户。
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
+			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+			}
+		case "delete":
+			if user.Role == common.RoleRootUser {
+				result.Failed++
+				result.Errors = append(result.Errors, batchUserError(id, common.TranslateMessage(c, i18n.MsgUserCannotDeleteRootUser)))
+				continue
+			}
+			if err := user.Delete(); err != nil {
+				result.Failed++
+				result.Errors = append(result.Errors, batchUserError(id, err.Error()))
+				continue
+			}
+			// 删除用户后，强制清理 Redis 中所有该用户令牌的缓存。
+			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
+			}
+		}
+
+		result.Succeeded++
+		recordManageAuditFor(c, user.Id, "user.manage", map[string]interface{}{
+			"action":   req.Action,
+			"username": user.Username,
+			"id":       user.Id,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    result,
+	})
 }
 
 type emailBindRequest struct {

@@ -117,6 +117,14 @@ export type ManageUserAction =
   | 'delete'
   | 'add_quota'
 
+export type BatchUserAction = 'enable' | 'disable' | 'delete'
+
+export interface BatchManageUsersResult {
+  succeeded: number
+  failed: number
+  errors: string[]
+}
+
 export type QuotaAdjustMode = 'add' | 'subtract' | 'override'
 
 export interface ManageUserQuotaPayload {
