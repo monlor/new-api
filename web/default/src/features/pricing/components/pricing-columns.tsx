@@ -39,6 +39,7 @@ import {
   stripTrailingZeros,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
+import { RatioBadge } from './ratio-badge'
 
 // ----------------------------------------------------------------------------
 // Pricing Table Columns
@@ -83,6 +84,7 @@ export function usePricingColumns(
             <span className='truncate font-mono text-sm font-medium'>
               {model.model_name}
             </span>
+            <RatioBadge model={model} className='shrink-0' />
           </div>
         )
       },

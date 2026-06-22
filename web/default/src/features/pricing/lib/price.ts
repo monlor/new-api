@@ -55,7 +55,7 @@ export function stripTrailingZeros(formatted: string): string {
 /**
  * Find minimum effective ratio (group ratio × min channel ratio) from enabled groups
  */
-function getMinEffectiveRatio(
+export function getMinEffectiveRatio(
   enableGroups: string[],
   groupRatio: Record<string, number>,
   groupChannelRatioMin?: Record<string, number>
@@ -326,4 +326,37 @@ export function formatRequestPrice(
     digitsSmall: 4,
     abbreviate: false,
   })
+}
+
+/**
+ * Compute the effective ratio shown on a model in the marketplace.
+ *
+ * Combines group ratio with the minimum channel ratio, taking the minimum
+ * across all enabled groups. This is the same "best (lowest) effective ratio"
+ * used by the price columns, so the badge stays consistent with displayed
+ * prices. Applies to all billing types (token / per-request / dynamic), since
+ * both ratios multiply into every billing path.
+ */
+export function getEffectiveRatio(model: PricingModel): number {
+  const enableGroups = Array.isArray(model.enable_groups)
+    ? model.enable_groups
+    : []
+  const groupRatio = model.group_ratio || {}
+  return getMinEffectiveRatio(
+    enableGroups,
+    groupRatio,
+    model.group_channel_ratio_min
+  )
+}
+
+/**
+ * Format a ratio as a compact label, e.g. 0.5 -> "x0.5", 2 -> "x2".
+ * Integers render bare; decimals are kept to at most 2 places, trailing zeros
+ * dropped.
+ */
+export function formatRatioLabel(ratio: number): string {
+  const formatted = Number.isInteger(ratio)
+    ? ratio.toString()
+    : ratio.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
+  return `x${formatted}`
 }
