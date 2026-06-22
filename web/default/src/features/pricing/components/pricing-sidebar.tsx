@@ -328,7 +328,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
           onChange={props.onEndpointTypeChange}
         />
         <FilterSection
-          title={t('Availability')}
+          title={t('Billing Method')}
           value={props.availabilityFilter}
           options={availabilityOptions}
           onChange={props.onAvailabilityChange}

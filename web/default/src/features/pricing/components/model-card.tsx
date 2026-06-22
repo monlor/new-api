@@ -246,7 +246,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
           {props.model.wallet_available && (
             <StatusBadge
-              label={t('Balance Available')}
+              label={t('Balance Billing')}
               variant='success'
               copyable={false}
               size='sm'
@@ -254,7 +254,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
           {props.model.subscription_available && (
             <StatusBadge
-              label={t('Subscription Available')}
+              label={t('Subscription Billing')}
               variant='info'
               copyable={false}
               size='sm'

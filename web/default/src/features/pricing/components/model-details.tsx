@@ -330,7 +330,7 @@ function ModelHeader(props: { model: PricingModel }) {
             <div className='flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-2.5 py-1 dark:border-green-500/30 dark:bg-green-500/10'>
               <Wallet className='size-3.5 text-green-600 dark:text-green-400' />
               <span className='text-xs font-medium text-green-700 dark:text-green-300'>
-                {t('Balance Available')}
+                {t('Balance Billing')}
               </span>
             </div>
           )}
@@ -338,7 +338,7 @@ function ModelHeader(props: { model: PricingModel }) {
             <div className='flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 dark:border-blue-500/30 dark:bg-blue-500/10'>
               <Crown className='size-3.5 text-blue-600 dark:text-blue-400' />
               <span className='text-xs font-medium text-blue-700 dark:text-blue-300'>
-                {t('Subscription Available')}
+                {t('Subscription Billing')}
               </span>
             </div>
           )}
@@ -977,7 +977,7 @@ function GroupPricingSection(props: {
           <div className='mt-2 mb-1 flex items-center gap-1.5 px-1'>
             <Wallet className='size-3.5 text-green-600 dark:text-green-400' />
             <span className='text-xs font-medium text-green-700 dark:text-green-300'>
-              {t('Balance Available')}
+              {t('Balance Billing')}
             </span>
           </div>
           {renderTable(
@@ -988,7 +988,7 @@ function GroupPricingSection(props: {
           <div className='mt-4 mb-1 flex items-center gap-1.5 px-1'>
             <Crown className='size-3.5 text-blue-600 dark:text-blue-400' />
             <span className='text-xs font-medium text-blue-700 dark:text-blue-300'>
-              {t('Subscription Available')}
+              {t('Subscription Billing')}
             </span>
           </div>
           {renderTable(

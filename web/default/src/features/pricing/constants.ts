@@ -112,8 +112,8 @@ export function getAvailabilityTypeLabels(
 ): Record<AvailabilityTypeOption, string> {
   return {
     [AVAILABILITY_TYPES.ALL]: t('All'),
-    [AVAILABILITY_TYPES.WALLET]: t('Balance Available'),
-    [AVAILABILITY_TYPES.SUBSCRIPTION]: t('Subscription Available'),
+    [AVAILABILITY_TYPES.WALLET]: t('Balance Billing'),
+    [AVAILABILITY_TYPES.SUBSCRIPTION]: t('Subscription Billing'),
   }
 }
 
