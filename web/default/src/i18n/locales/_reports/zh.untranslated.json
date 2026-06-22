@@ -1,4 +1,5 @@
 {
+  "CC Switch": "CC Switch",
   "Delete selected users": "Delete selected users",
   "Delete {{count}} user(s)?": "Delete {{count}} user(s)?",
   "Disable selected users": "Disable selected users",
@@ -9,5 +10,18 @@
   "Successfully deleted {{count}} user(s)": "Successfully deleted {{count}} user(s)",
   "Successfully disabled {{count}} user(s)": "Successfully disabled {{count}} user(s)",
   "Successfully enabled {{count}} user(s)": "Successfully enabled {{count}} user(s)",
-  "You are about to delete {{count}} user(s). This action cannot be undone.": "You are about to delete {{count}} user(s). This action cannot be undone."
+  "You are about to delete {{count}} user(s). This action cannot be undone.": "You are about to delete {{count}} user(s). This action cannot be undone.",
+  "Batch test completed: {{count}} succeeded": "Batch test completed: {{count}} succeeded",
+  "Batch testing models...": "Batch testing models...",
+  "Stop testing": "Stop testing",
+  "Stopping batch test...": "Stopping batch test...",
+  "Stopping...": "Stopping...",
+  "Test {{count}} matching models": "Test {{count}} matching models",
+  "Test all {{count}} models": "Test all {{count}} models",
+  "Channel {{name}}": "Channel {{name}}",
+  "Channel {{name}} model {{model}}": "Channel {{name}} model {{model}}",
+  "Model {{model}}": "Model {{model}}",
+  "Response time: {{duration}}": "Response time: {{duration}}",
+  "Batch test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed": "Batch test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed",
+  "Batch test completed: {{success}} succeeded, {{failed}} failed": "Batch test completed: {{success}} succeeded, {{failed}} failed"
 }

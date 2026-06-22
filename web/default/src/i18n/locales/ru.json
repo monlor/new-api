@@ -1853,7 +1853,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Для частных развертываний, формат: https://fastgpt.run/api/openapi",
     "Force a syntactically valid JSON response": "Принудительно возвращать синтаксически корректный JSON",
@@ -4688,6 +4688,23 @@
     "Make sure the following content is at the beginning of the config.toml file.": "Убедитесь, что следующий контент находится в начале файла config.toml.",
     "Add the following environment variables to your terminal profile or run directly in terminal.": "Добавьте следующие переменные окружения в профиль терминала или выполните непосредственно в терминале.",
     "Add the following config files to the Codex CLI config directory.": "Добавьте следующие файлы конфигурации в директорию настроек Codex CLI.",
-    "These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.": "Эти переменные окружения действуют в текущем сеансе терминала. Для постоянной настройки добавьте их в ~/.bashrc, ~/.zshrc или соответствующий файл профиля."
+    "These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.": "Эти переменные окружения действуют в текущем сеансе терминала. Для постоянной настройки добавьте их в ~/.bashrc, ~/.zshrc или соответствующий файл профиля.",
+    "{{completed}}/{{total}} completed": "{{completed}}/{{total}} completed",
+    "{{success}} succeeded, {{failed}} failed": "{{success}} succeeded, {{failed}} failed",
+    "Batch test completed: {{count}} succeeded": "Batch test completed: {{count}} succeeded",
+    "Batch testing models...": "Batch testing models...",
+    "Stop testing": "Stop testing",
+    "Stopping batch test...": "Stopping batch test...",
+    "Stopping...": "Stopping...",
+    "Test {{count}} matching models": "Test {{count}} matching models",
+    "Test all {{count}} models": "Test all {{count}} models",
+    "{{target}} test failed": "{{target}} test failed",
+    "{{target}} test succeeded": "{{target}} test succeeded",
+    "Channel {{name}}": "Channel {{name}}",
+    "Channel {{name}} model {{model}}": "Channel {{name}} model {{model}}",
+    "Model {{model}}": "Model {{model}}",
+    "Response time: {{duration}}": "Response time: {{duration}}",
+    "Batch test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed": "Batch test stopped: {{completed}}/{{total}} completed, {{success}} succeeded, {{failed}} failed",
+    "Batch test completed: {{success}} succeeded, {{failed}} failed": "Batch test completed: {{success}} succeeded, {{failed}} failed"
   }
 }
