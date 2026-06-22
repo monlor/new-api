@@ -144,6 +144,7 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+var QuotaForInviterThreshold = 0 // 被邀请人累计充值（折算 quota）达到该阈值后才发放邀请人奖励，0 表示注册即发放
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

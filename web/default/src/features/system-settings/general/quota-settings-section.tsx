@@ -79,6 +79,7 @@ const quotaSchema = z.object({
   PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
+  QuotaForInviterThreshold: z.coerce.number().min(0),
   TopUpLink: z.string(),
   general_setting: z.object({
     docs_link: z.string(),
@@ -95,6 +96,7 @@ type RawQuotaValues = {
   PreConsumedQuota: number
   QuotaForInviter: number
   QuotaForInvitee: number
+  QuotaForInviterThreshold: number
   TopUpLink: string
   general_setting: { docs_link: string }
   quota_setting: { enable_free_model_pre_consume: boolean }
@@ -128,6 +130,10 @@ export function QuotaSettingsSection({
     PreConsumedQuota: quotaToCreditUnits(raw.PreConsumedQuota, quotaPerUnit),
     QuotaForInviter: quotaToCreditUnits(raw.QuotaForInviter, quotaPerUnit),
     QuotaForInvitee: quotaToCreditUnits(raw.QuotaForInvitee, quotaPerUnit),
+    QuotaForInviterThreshold: quotaToCreditUnits(
+      raw.QuotaForInviterThreshold,
+      quotaPerUnit
+    ),
     TopUpLink: raw.TopUpLink,
     general_setting: raw.general_setting,
     quota_setting: raw.quota_setting,
@@ -155,6 +161,7 @@ export function QuotaSettingsSection({
           'PreConsumedQuota',
           'QuotaForInviter',
           'QuotaForInvitee',
+          'QuotaForInviterThreshold',
         ])
         for (const [key, value] of Object.entries(changedFields)) {
           const saved =
@@ -279,6 +286,38 @@ export function QuotaSettingsSection({
                     {t('Balance given to users who invite others (in {{currency}})', {
                       currency,
                     })}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='QuotaForInviterThreshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Inviter Reward Threshold')}</FormLabel>
+                  <FormControl>
+                    <InputGroup>
+                      <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                      <InputGroupInput
+                        type='number'
+                        step='0.01'
+                        min='0'
+                        value={field.value ?? ''}
+                        onChange={handleNumberChange(field.onChange)}
+                        name={field.name}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </InputGroup>
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Inviter reward is granted only after the invitee tops up this amount in total (in {{currency}}). Set to 0 to grant on registration.',
+                      { currency }
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

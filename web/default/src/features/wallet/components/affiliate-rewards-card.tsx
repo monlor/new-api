@@ -46,6 +46,9 @@ export function AffiliateRewardsCard({
   const { status } = useStatus()
   const quotaForInviter = Number(status?.quota_for_inviter || 0)
   const quotaForInvitee = Number(status?.quota_for_invitee || 0)
+  const quotaForInviterThreshold = Number(
+    status?.quota_for_inviter_threshold || 0
+  )
   if (loading) {
     return (
       <Card data-card-hover='false' className='bg-muted/20 py-0'>
@@ -75,10 +78,19 @@ export function AffiliateRewardsCard({
               {t('Referral Program')}
             </h3>
             <p className='text-muted-foreground text-xs'>
-              {t('Inviter gets {{inviter}}, invitee gets {{invitee}}.', {
-                inviter: formatQuota(quotaForInviter),
-                invitee: formatQuota(quotaForInvitee),
-              })}
+              {quotaForInvitee > 0
+                ? t('Inviter gets {{inviter}}, invitee gets {{invitee}}.', {
+                    inviter: formatQuota(quotaForInviter),
+                    invitee: formatQuota(quotaForInvitee),
+                  })
+                : t('Inviter gets {{inviter}}.', {
+                    inviter: formatQuota(quotaForInviter),
+                  })}
+              {quotaForInviterThreshold > 0
+                ? ` ${t('(Granted after the invitee tops up {{amount}})', {
+                    amount: formatQuota(quotaForInviterThreshold),
+                  })}`
+                : ''}
             </p>
           </div>
         </div>

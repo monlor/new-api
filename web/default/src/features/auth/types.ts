@@ -119,6 +119,7 @@ export interface SystemStatus {
     quota_per_unit?: number
     quota_for_inviter?: number
     quota_for_invitee?: number
+    quota_for_inviter_threshold?: number
     quota_display_type?: string
     usd_exchange_rate?: number
     custom_currency_symbol?: string
@@ -164,6 +165,7 @@ export interface SystemStatus {
   quota_per_unit?: number
   quota_for_inviter?: number
   quota_for_invitee?: number
+  quota_for_inviter_threshold?: number
   quota_display_type?: string
   usd_exchange_rate?: number
   custom_currency_symbol?: string

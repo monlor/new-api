@@ -254,6 +254,10 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// Backfill inviter_reward_granted for existing invited users on first column add
+	if err := migrateInviterRewardGrantedBackfill(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -298,6 +302,11 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	// Backfill inviter_reward_granted for existing invited users on first column add.
+	// Must run before the concurrent AutoMigrate adds the column.
+	if err := migrateInviterRewardGrantedBackfill(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -452,6 +461,29 @@ PRIMARY KEY (` + "`id`" + `)
 			return err
 		}
 	}
+	return nil
+}
+
+// migrateInviterRewardGrantedBackfill 在首次添加 inviter_reward_granted 列时，
+// 将历史邀请用户（inviter_id != 0）标记为已发放，避免管理员后续设置充值门槛后对老用户重复发放邀请奖励。
+// 通过“仅当列不存在时手动加列并回填”保证回填只执行一次（后续 AutoMigrate 检测到列已存在即跳过）。
+func migrateInviterRewardGrantedBackfill() error {
+	// 全新安装（users 表不存在）无需回填，列会由 AutoMigrate 创建并使用默认值 false
+	if !DB.Migrator().HasTable(&User{}) {
+		return nil
+	}
+	// 列已存在说明此前已迁移过，跳过
+	if DB.Migrator().HasColumn(&User{}, "inviter_reward_granted") {
+		return nil
+	}
+	// 首次添加列，并一次性回填历史邀请关系
+	if err := DB.Migrator().AddColumn(&User{}, "InviterRewardGranted"); err != nil {
+		return fmt.Errorf("failed to add inviter_reward_granted column: %w", err)
+	}
+	if err := DB.Model(&User{}).Where("inviter_id <> ?", 0).Update("inviter_reward_granted", true).Error; err != nil {
+		return fmt.Errorf("failed to backfill inviter_reward_granted: %w", err)
+	}
+	common.SysLog("Successfully backfilled inviter_reward_granted for existing invited users")
 	return nil
 }
 
