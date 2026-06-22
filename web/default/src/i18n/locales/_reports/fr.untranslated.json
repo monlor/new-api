@@ -1,0 +1,4 @@
+{
+  "Failed to {{action}} users": "Failed to {{action}} users",
+  "You are about to delete {{count}} user(s). This action cannot be undone.": "You are about to delete {{count}} user(s). This action cannot be undone."
+}

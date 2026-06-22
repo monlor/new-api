@@ -1,5 +1,4 @@
 {
-  "© 2025 Your Company. All rights reserved.": "© 2025 Your Company. All rights reserved.",
   "Delete selected users": "Delete selected users",
   "Delete {{count}} user(s)?": "Delete {{count}} user(s)?",
   "Disable selected users": "Disable selected users",
@@ -7,10 +6,6 @@
   "Failed for {{count}} user(s)": "Failed for {{count}} user(s)",
   "Failed for {{count}} user(s): {{detail}}": "Failed for {{count}} user(s): {{detail}}",
   "Failed to {{action}} users": "Failed to {{action}} users",
-  "footer.defaultCopyright": "All rights reserved.",
-  "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
-  "Group ratio × minimum channel ratio": "Group ratio × minimum channel ratio",
-  "Runway": "Runway",
   "Successfully deleted {{count}} user(s)": "Successfully deleted {{count}} user(s)",
   "Successfully disabled {{count}} user(s)": "Successfully disabled {{count}} user(s)",
   "Successfully enabled {{count}} user(s)": "Successfully enabled {{count}} user(s)",
