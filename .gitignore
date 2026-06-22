@@ -23,7 +23,10 @@ tiktoken_cache
 .gomodcache/
 .cache
 plans
-.claude
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/launch.json
 .cursor
 
 electron/node_modules
@@ -42,3 +45,7 @@ graphify-out/
 
 # transient upstream-sync assessment (regenerated each sync)
 FORK_SYNC_ASSESSMENT.md
+
+# newapi-dev orchestrator runtime scratch (local, not versioned)
+.claude/skills/*/_workspace/
+.claude/skills/*/_workspace_prev/

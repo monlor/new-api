@@ -1,0 +1,44 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-default",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "--cwd=/Users/monlor/Workspace/new-api/web/default",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "3001"
+      ],
+      "port": 3001,
+      "autoPort": false
+    },
+    {
+      "name": "frontend-classic",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "--cwd=/Users/monlor/Workspace/new-api/web/classic",
+        "run",
+        "dev",
+        "--",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "5174"
+      ],
+      "port": 5174,
+      "autoPort": false
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "main.go"],
+      "port": 3000,
+      "autoPort": false
+    }
+  ]
+}
