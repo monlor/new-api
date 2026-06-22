@@ -224,8 +224,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         <div className='flex-1' aria-hidden='true' />
       )}
 
-      {/* Footer: left metadata and right performance summary share row alignment */}
-      <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
+      {/* Footer: left metadata baseline-aligns with the right perf data row.
+          The perf badge is two lines tall (faint labels above, values below);
+          bottom-aligning keeps the billing text level with the values, not the
+          labels. */}
+      <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-2 gap-y-1 sm:mt-4'>
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           <span className='text-muted-foreground text-xs font-medium'>
             {isTokenBased ? t('Token-based') : t('Per Request')}
@@ -257,7 +260,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             />
           )}
         </div>
-        <ModelPerfBadge perf={props.perf} className='self-start' />
+        <ModelPerfBadge perf={props.perf} />
       </div>
     </div>
   )
