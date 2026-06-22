@@ -1198,12 +1198,17 @@ func ManageUserBatch(c *gin.Context) {
 				result.Errors = append(result.Errors, batchUserError(id, common.TranslateMessage(c, i18n.MsgUserCannotDeleteRootUser)))
 				continue
 			}
-			if err := user.Delete(); err != nil {
+			// 与单个删除（DeleteUser -> HardDeleteUserById）保持一致：硬删除并清理 OAuth 绑定，
+			// 而不是软删除（软删除会把用户留在库里、前端显示为“注销”状态）。
+			if err := user.HardDelete(); err != nil {
 				result.Failed++
 				result.Errors = append(result.Errors, batchUserError(id, err.Error()))
 				continue
 			}
-			// 删除用户后，强制清理 Redis 中所有该用户令牌的缓存。
+			// 删除用户后，强制清理 Redis 中该用户及其全部令牌的缓存。
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
 			if err := model.InvalidateUserTokensCache(user.Id); err != nil {
 				common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", user.Id, err.Error()))
 			}
