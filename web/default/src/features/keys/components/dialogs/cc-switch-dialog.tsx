@@ -65,9 +65,10 @@ function buildCCSwitchURL(
   name: string,
   models: Record<string, string>,
   apiKey: string,
-  serverAddress: string
+  apiEndpoint: string,
+  homepage: string
 ): string {
-  const endpoint = app === 'codex' ? serverAddress + '/v1' : serverAddress
+  const endpoint = app === 'codex' ? apiEndpoint + '/v1' : apiEndpoint
   const params = new URLSearchParams()
   params.set('resource', 'provider')
   params.set('app', app)
@@ -77,7 +78,7 @@ function buildCCSwitchURL(
   for (const [k, v] of Object.entries(models)) {
     if (v) params.set(k, v)
   }
-  params.set('homepage', serverAddress)
+  params.set('homepage', homepage)
   params.set('enabled', 'true')
   return `ccswitch://v1/import?${params.toString()}`
 }
@@ -183,7 +184,7 @@ export function CCSwitchDialog(props: Props) {
       ? props.tokenKey
       : `sk-${props.tokenKey}`
     const endpoint = selectedEndpoint || serverAddress
-    const url = buildCCSwitchURL(app, name, models, key, endpoint)
+    const url = buildCCSwitchURL(app, name, models, key, endpoint, serverAddress)
     window.open(url, '_blank')
     props.onOpenChange(false)
   }
