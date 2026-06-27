@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 // notifyLimitStore is used for in-memory rate limiting when Redis is disabled
 var (
 	notifyLimitStore sync.Map
+	notifyLimitMu    sync.Mutex
 	cleanupOnce      sync.Once
 )
 
@@ -55,43 +55,29 @@ func CheckNotificationLimit(userId int, notifyType string) (bool, error) {
 }
 
 func checkRedisLimit(userId int, notifyType string) (bool, error) {
-	key := fmt.Sprintf("notify_limit:%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
+	// key 不再按整点分桶，window 完全由 TTL（getDuration）决定，避免桶过期导致计数器中途重置。
+	key := fmt.Sprintf("notify_limit:%d:%s", userId, notifyType)
 
-	// Get current count
-	count, err := common.RedisGet(key)
-	if err != nil && err.Error() != "redis: nil" {
-		return false, fmt.Errorf("failed to get notification count: %w", err)
-	}
-
-	// If key doesn't exist, initialize it
-	if count == "" {
-		err = common.RedisSet(key, "1", getDuration())
-		return true, err
-	}
-
-	currentCount, _ := strconv.Atoi(count)
-	limit := constant.NotifyLimitCount
-
-	// Check if limit is already reached
-	if currentCount >= limit {
-		return false, nil
-	}
-
-	// Only increment if under limit
-	err = common.RedisIncr(key, 1)
+	// 原子自增并在首次创建 key 时设置过期时间，避免「读→判断→自增」的 TOCTOU 竞态。
+	count, err := common.RedisIncrWithExpire(key, 1, getDuration())
 	if err != nil {
-		return false, fmt.Errorf("failed to increment notification count: %w", err)
+		return false, fmt.Errorf("failed to check notification count: %w", err)
 	}
 
-	return true, nil
+	return count <= int64(constant.NotifyLimitCount), nil
 }
 
 func checkMemoryLimit(userId int, notifyType string) (bool, error) {
 	// Ensure cleanup task is started
 	cleanupOnce.Do(startCleanupTask)
 
-	key := fmt.Sprintf("%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
+	// key 不再按整点分桶，window 由 limitCount.Timestamp + getDuration 决定。
+	key := fmt.Sprintf("%d:%s", userId, notifyType)
 	now := time.Now()
+
+	// 用互斥锁保护「load→自增→store」，避免并发 goroutine 同时通过检查。
+	notifyLimitMu.Lock()
+	defer notifyLimitMu.Unlock()
 
 	// Get current limit count or initialize new one
 	var currentLimit limitCount
