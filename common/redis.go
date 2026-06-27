@@ -272,6 +272,26 @@ func RedisIncr(key string, delta int64) error {
 	return nil
 }
 
+// RedisIncrWithExpire 原子地将 key 自增 delta，并仅在 key 尚无过期时间时（即首次创建）设置
+// 过期时间，返回自增后的值。INCR 与 EXPIRE NX 在同一个 MULTI/EXEC 事务中执行：既避免
+// 「读→判断→自增」的 TOCTOU 竞态，也避免进程在 INCR 与 EXPIRE 之间崩溃导致 key 永久无 TTL
+// 而把用户永久拦死。用于通知限流等「窗口内最多 N 次」的固定窗口原子计数场景。
+// 注意：EXPIRE ... NX 语义需要 Redis 7.0+。
+func RedisIncrWithExpire(key string, delta int64, expiration time.Duration) (int64, error) {
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis INCR_EX: key=%s, delta=%d, expiration=%v", key, delta, expiration))
+	}
+	ctx := context.Background()
+	txn := RDB.TxPipeline()
+	incrCmd := txn.IncrBy(ctx, key, delta)
+	// ExpireNX 仅在 key 没有 TTL 时设置过期时间，因此后续自增不会续期，保证固定窗口语义。
+	txn.ExpireNX(ctx, key, expiration)
+	if _, err := txn.Exec(ctx); err != nil {
+		return 0, err
+	}
+	return incrCmd.Val(), nil
+}
+
 func RedisHIncrBy(key, field string, delta int64) error {
 	if DebugEnabled {
 		SysLog(fmt.Sprintf("Redis HINCRBY: key=%s, field=%s, delta=%d", key, field, delta))
