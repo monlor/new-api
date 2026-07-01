@@ -93,12 +93,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             )}
           </div>
           <div className='min-w-0'>
-            <div className='flex min-w-0 items-center gap-1.5'>
-              <h3 className='text-foreground truncate font-mono text-[15px] leading-tight font-bold'>
-                {props.model.model_name}
-              </h3>
-              <RatioBadge model={props.model} className='shrink-0' />
-            </div>
+            <h3 className='text-foreground truncate font-mono text-[15px] leading-tight font-bold'>
+              {props.model.model_name}
+            </h3>
             <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs sm:mt-1 sm:gap-x-3'>
               {dynamicSummary ? (
                 dynamicSummary.isSpecialExpression ? (
@@ -233,6 +230,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           <span className='text-muted-foreground text-xs font-medium'>
             {isTokenBased ? t('Token-based') : t('Per Request')}
           </span>
+          <RatioBadge model={props.model} className='shrink-0' />
           {isDynamicPricing && (
             <StatusBadge
               label={t('Dynamic Pricing')}
