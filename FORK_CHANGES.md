@@ -87,6 +87,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - API 端点按路由（而非描述）标注
 - code-block 支持额外/未知语言（单例 highlighter）
 - 定价页：按计费类型拆分渠道倍率、可用性过滤、有效倍率徽章、模型卡精简；倍率徽标从名称行移至底部元数据区（避免截断模型名称）
+- 模型广场价格统一按「基础价 × 分组倍率 × 渠道倍率」展示最低折扣价，移除充值费率价格模式；模型详情默认展示分组折扣价范围，可切换为不含分组/渠道倍率的原价，并覆盖普通、按次与动态计费
 - minimax / speech-0 模型映射到 MiniMax 厂商
 - CC Switch 导入弹窗：新增「API Endpoint 选择器」（基于 status 的 `api_info` 多端点），并将 `homepage`（官网链接）与所选 API endpoint 解耦——`endpoint` 用所选 API 地址，`homepage` 用真实站点地址 `server_address`（上游二者同源，本 fork 拆分后修复了「官网链接=API 链接」的问题）
 

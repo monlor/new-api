@@ -27,6 +27,13 @@ export type PricingVendor = {
   description?: string
 }
 
+export type PriceDisplayMode = 'discounted' | 'original'
+
+export type EffectiveRatioRange = {
+  min: number
+  max: number
+}
+
 export type PricingModel = {
   id: number
   model_name: string

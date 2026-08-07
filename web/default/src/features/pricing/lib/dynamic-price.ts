@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { TOKEN_UNIT_DIVISORS } from '../constants'
-import type { PricingModel, TokenUnit } from '../types'
+import type { EffectiveRatioRange, PricingModel, TokenUnit } from '../types'
 import {
   BILLING_PRICING_VARS,
   parseTiersFromExpr,
@@ -27,12 +27,11 @@ import {
   type BillingVar,
   type ParsedTier,
 } from './billing-expr'
+import { getEffectiveRatio } from './price'
 
 type DynamicPriceOptions = {
   tokenUnit: TokenUnit
-  showRechargePrice?: boolean
-  priceRate?: number
-  usdExchangeRate?: number
+  ratioRange?: EffectiveRatioRange
   groupRatioMultiplier?: number
 }
 
@@ -65,53 +64,29 @@ export function isDynamicPricingModel(model: PricingModel): boolean {
 }
 
 export function getDynamicDisplayGroupRatio(model: PricingModel): number {
-  const groups = Array.isArray(model.enable_groups) ? model.enable_groups : []
-  const ratios = model.group_ratio || {}
-  if (groups.length === 0) return 1
-
-  let minRatio = Number.POSITIVE_INFINITY
-  for (const group of groups) {
-    const ratio = ratios[group]
-    if (ratio !== undefined && ratio < minRatio) {
-      minRatio = ratio
-    }
-  }
-
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
-}
-
-function applyRechargeRate(
-  price: number,
-  showWithRecharge: boolean,
-  priceRate: number,
-  usdExchangeRate: number
-): number {
-  if (!showWithRecharge) return price
-  return (price * priceRate) / usdExchangeRate
+  return getEffectiveRatio(model)
 }
 
 export function formatDynamicUnitPrice(
   valuePerMillionTokens: number,
   options: DynamicPriceOptions
 ): string {
-  const groupRatio = options.groupRatioMultiplier ?? 1
-  const priceRate = options.priceRate ?? 1
-  const usdExchangeRate = options.usdExchangeRate ?? 1
-  const priceUSD =
-    (valuePerMillionTokens * groupRatio) /
-    TOKEN_UNIT_DIVISORS[options.tokenUnit]
-  const displayPrice = applyRechargeRate(
-    priceUSD,
-    options.showRechargePrice ?? false,
-    priceRate,
-    usdExchangeRate
-  )
-
-  return formatBillingCurrencyFromUSD(displayPrice, {
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
-  })
+  const ratioRange = options.ratioRange ?? {
+    min: options.groupRatioMultiplier ?? 1,
+    max: options.groupRatioMultiplier ?? 1,
+  }
+  const format = (ratio: number) =>
+    formatBillingCurrencyFromUSD(
+      (valuePerMillionTokens * ratio) / TOKEN_UNIT_DIVISORS[options.tokenUnit],
+      {
+        digitsLarge: 4,
+        digitsSmall: 6,
+        abbreviate: false,
+      }
+    )
+  const min = format(ratioRange.min)
+  if (ratioRange.min === ratioRange.max) return min
+  return `${min} ~ ${format(ratioRange.max)}`
 }
 
 export function getDynamicPricingTiers(model: PricingModel): ParsedTier[] {

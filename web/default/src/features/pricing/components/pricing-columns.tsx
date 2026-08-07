@@ -47,21 +47,13 @@ import { RatioBadge } from './ratio-badge'
 
 export interface PricingColumnsOptions {
   tokenUnit?: TokenUnit
-  priceRate?: number
-  usdExchangeRate?: number
-  showRechargePrice?: boolean
 }
 
 export function usePricingColumns(
   options: PricingColumnsOptions = {}
 ): ColumnDef<PricingModel>[] {
   const { t } = useTranslation()
-  const {
-    tokenUnit = DEFAULT_TOKEN_UNIT,
-    priceRate = 1,
-    usdExchangeRate = 1,
-    showRechargePrice = false,
-  } = options
+  const { tokenUnit = DEFAULT_TOKEN_UNIT } = options
 
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
 
@@ -121,9 +113,6 @@ export function usePricingColumns(
         const model = row.original
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,
-          showRechargePrice,
-          priceRate,
-          usdExchangeRate,
           groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
         })
 
@@ -180,24 +169,10 @@ export function usePricingColumns(
 
         if (isTokenBased) {
           const inputPrice = stripTrailingZeros(
-            formatPrice(
-              model,
-              'input',
-              tokenUnit,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate
-            )
+            formatPrice(model, 'input', tokenUnit)
           )
           const outputPrice = stripTrailingZeros(
-            formatPrice(
-              model,
-              'output',
-              tokenUnit,
-              showRechargePrice,
-              priceRate,
-              usdExchangeRate
-            )
+            formatPrice(model, 'output', tokenUnit)
           )
 
           return (
@@ -214,14 +189,7 @@ export function usePricingColumns(
           )
         }
 
-        const price = stripTrailingZeros(
-          formatRequestPrice(
-            model,
-            showRechargePrice,
-            priceRate,
-            usdExchangeRate
-          )
-        )
+        const price = stripTrailingZeros(formatRequestPrice(model))
 
         return (
           <div className='max-w-full min-w-0'>
@@ -244,9 +212,6 @@ export function usePricingColumns(
         const model = row.original
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,
-          showRechargePrice,
-          priceRate,
-          usdExchangeRate,
           groupRatioMultiplier: getDynamicDisplayGroupRatio(model),
         })
 
@@ -285,14 +250,7 @@ export function usePricingColumns(
         }
 
         const cachedPrice = stripTrailingZeros(
-          formatPrice(
-            model,
-            'cache',
-            tokenUnit,
-            showRechargePrice,
-            priceRate,
-            usdExchangeRate
-          )
+          formatPrice(model, 'cache', tokenUnit)
         )
 
         return (

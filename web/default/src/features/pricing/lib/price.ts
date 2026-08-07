@@ -16,9 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
-import type { PricingModel, TokenUnit, PriceType } from '../types'
+import type {
+  EffectiveRatioRange,
+  PriceDisplayMode,
+  PricingModel,
+  TokenUnit,
+  PriceType,
+} from '../types'
 
 // ----------------------------------------------------------------------------
 // Price Calculation Utilities
@@ -77,13 +83,32 @@ export function getMinEffectiveRatio(
   return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
 }
 
+/** Resolve the complete group x channel multiplier range for one group. */
+export function getEffectiveRatioRange(
+  group: string,
+  groupRatio: Record<string, number>,
+  channelRatioMin?: Record<string, number>,
+  channelRatioMax?: Record<string, number>
+): EffectiveRatioRange {
+  const groupMultiplier = groupRatio[group] ?? 1
+  const channelMin = channelRatioMin?.[group] ?? 1
+  const channelMax = channelRatioMax?.[group] ?? channelMin
+  const first = groupMultiplier * channelMin
+  const second = groupMultiplier * channelMax
+
+  return {
+    min: Math.min(first, second),
+    max: Math.max(first, second),
+  }
+}
+
 /**
  * Calculate token price in USD.
  *
  * Returns NaN when the required ratio field is missing/null so callers can
  * skip rendering that price type.
  */
-function calculateTokenPrice(
+export function calculateTokenPriceUSD(
   model: PricingModel,
   type: PriceType,
   ratio: number
@@ -121,44 +146,33 @@ function calculateTokenPrice(
   }
 }
 
+export function calculateRequestPriceUSD(
+  model: PricingModel,
+  ratio: number
+): number {
+  return (model.model_price ?? 0) * ratio
+}
+
 function hasRatio(value: number | null | undefined): boolean {
   return value !== undefined && value !== null && Number.isFinite(Number(value))
 }
 
-/**
- * Apply recharge rate to price
- *
- * priceRate represents how much users need to recharge (in the display currency)
- * to get 1 USD credit. usdExchangeRate is the real exchange rate.
- *
- * The returned value will be formatted by formatCurrencyFromUSD, which will
- * multiply by the display currency's exchange rate.
- *
- * Examples:
- *
- * 1. Display currency = USD:
- *    - Model: 1 USD
- *    - priceRate = 0.5 (recharge $0.5 to get $1 credit)
- *    - usdExchangeRate = 1
- *    - Return: 1 × 0.5 / 1 = 0.5
- *    - formatCurrencyFromUSD(0.5) → $0.5 ✓
- *
- * 2. Display currency = CNY:
- *    - Model: 1 USD
- *    - priceRate = 4 (recharge ¥4 to get $1 credit)
- *    - usdExchangeRate = 7 (real rate: 1 USD = ¥7)
- *    - Return: 1 × 4 / 7 = 0.571
- *    - formatCurrencyFromUSD(0.571) → 0.571 × 7 = ¥4 ✓
- *    - Normal price: ¥7, Recharge price: ¥4 (cheaper!)
- */
-function applyRechargeRate(
-  price: number,
-  showWithRecharge: boolean,
-  priceRate: number,
-  usdExchangeRate: number
-): number {
-  if (!showWithRecharge) return price
-  return (price * priceRate) / usdExchangeRate
+function formatUSDPrice(price: number, digitsSmall = 6): string {
+  return formatBillingCurrencyFromUSD(price, {
+    digitsLarge: 4,
+    digitsSmall,
+    abbreviate: false,
+  })
+}
+
+function formatUSDRange(
+  range: EffectiveRatioRange,
+  getPrice: (ratio: number) => number,
+  digitsSmall = 6
+): string {
+  const lo = formatUSDPrice(getPrice(range.min), digitsSmall)
+  if (range.min === range.max) return lo
+  return `${lo} ~ ${formatUSDPrice(getPrice(range.max), digitsSmall)}`
 }
 
 /**
@@ -167,10 +181,7 @@ function applyRechargeRate(
 export function formatPrice(
   model: PricingModel,
   type: PriceType,
-  tokenUnit: TokenUnit,
-  showWithRecharge = false,
-  priceRate = 1,
-  usdExchangeRate = 1
+  tokenUnit: TokenUnit
 ): string {
   if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
@@ -186,20 +197,10 @@ export function formatPrice(
     model.group_channel_ratio_min
   )
 
-  let priceInUSD = calculateTokenPrice(model, type, minRatio)
-  priceInUSD = applyRechargeRate(
-    priceInUSD,
-    showWithRecharge,
-    priceRate,
-    usdExchangeRate
-  )
-
-  const price = priceInUSD / TOKEN_UNIT_DIVISORS[tokenUnit]
-  return formatCurrencyFromUSD(price, {
-    digitsLarge: 4,
-    digitsSmall: 6,
-    abbreviate: false,
-  })
+  const priceInUSD =
+    calculateTokenPriceUSD(model, type, minRatio) /
+    TOKEN_UNIT_DIVISORS[tokenUnit]
+  return formatUSDPrice(priceInUSD)
 }
 
 /**
@@ -210,18 +211,15 @@ export function formatGroupPrice(
   group: string,
   type: PriceType,
   tokenUnit: TokenUnit,
-  showWithRecharge = false,
-  priceRate = 1,
-  usdExchangeRate = 1,
   groupRatio: Record<string, number>,
   channelRatioMinOverride?: Record<string, number>,
-  channelRatioMaxOverride?: Record<string, number>
+  channelRatioMaxOverride?: Record<string, number>,
+  displayMode: PriceDisplayMode = 'discounted'
 ): string {
   if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
 
-  const gr = groupRatio[group] ?? 1
   const ratioMinMap = channelRatioMinOverride ?? model.group_channel_ratio_min
   // When a min override is provided (split-by-billing-type mode), fall back to
   // that same map as the max (single value, no range) rather than the combined
@@ -231,23 +229,17 @@ export function formatGroupPrice(
     (channelRatioMinOverride !== undefined
       ? channelRatioMinOverride
       : model.group_channel_ratio_max)
-  const crMin = ratioMinMap?.[group] ?? 1
-  const crMax = ratioMaxMap?.[group] ?? crMin
+  const ratioRange =
+    displayMode === 'original'
+      ? { min: 1, max: 1 }
+      : getEffectiveRatioRange(group, groupRatio, ratioMinMap, ratioMaxMap)
 
-  const fmt = (ratio: number) => {
-    let p = calculateTokenPrice(model, type, ratio)
-    p = applyRechargeRate(p, showWithRecharge, priceRate, usdExchangeRate)
-    return formatCurrencyFromUSD(p / TOKEN_UNIT_DIVISORS[tokenUnit], {
-      digitsLarge: 4,
-      digitsSmall: 6,
-      abbreviate: false,
-    })
-  }
-
-  const lo = fmt(gr * crMin)
-  if (crMin === crMax) return lo
-  const hi = fmt(gr * crMax)
-  return `${lo} ~ ${hi}`
+  return formatUSDRange(
+    ratioRange,
+    (ratio) =>
+      calculateTokenPriceUSD(model, type, ratio) /
+      TOKEN_UNIT_DIVISORS[tokenUnit]
+  )
 }
 
 /**
@@ -256,48 +248,37 @@ export function formatGroupPrice(
 export function formatFixedPrice(
   model: PricingModel,
   group: string,
-  showWithRecharge = false,
-  priceRate = 1,
-  usdExchangeRate = 1,
   groupRatio: Record<string, number>,
   channelRatioMinOverride?: Record<string, number>,
-  channelRatioMaxOverride?: Record<string, number>
+  channelRatioMaxOverride?: Record<string, number>,
+  displayMode: PriceDisplayMode = 'discounted'
 ): string {
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
 
-  const gr = groupRatio[group] ?? 1
   const ratioMinMap = channelRatioMinOverride ?? model.group_channel_ratio_min
   const ratioMaxMap =
     channelRatioMaxOverride ??
     (channelRatioMinOverride !== undefined
       ? channelRatioMinOverride
       : model.group_channel_ratio_max)
-  const crMin = ratioMinMap?.[group] ?? 1
-  const crMax = ratioMaxMap?.[group] ?? crMin
+  const ratioRange =
+    displayMode === 'original'
+      ? { min: 1, max: 1 }
+      : getEffectiveRatioRange(group, groupRatio, ratioMinMap, ratioMaxMap)
 
-  const fmt = (ratio: number) => {
-    let p = (model.model_price || 0) * ratio
-    p = applyRechargeRate(p, showWithRecharge, priceRate, usdExchangeRate)
-    return formatCurrencyFromUSD(p, { digitsLarge: 4, digitsSmall: 4, abbreviate: false })
-  }
-
-  const lo = fmt(gr * crMin)
-  if (crMin === crMax) return lo
-  const hi = fmt(gr * crMax)
-  return `${lo} ~ ${hi}`
+  return formatUSDRange(
+    ratioRange,
+    (ratio) => calculateRequestPriceUSD(model, ratio),
+    4
+  )
 }
 
 /**
  * Format fixed price for pay-per-request models (minimum price from all groups)
  */
-export function formatRequestPrice(
-  model: PricingModel,
-  showWithRecharge = false,
-  priceRate = 1,
-  usdExchangeRate = 1
-): string {
+export function formatRequestPrice(model: PricingModel): string {
   if (model.quota_type !== QUOTA_TYPE_VALUES.REQUEST) {
     return '-'
   }
@@ -312,20 +293,7 @@ export function formatRequestPrice(
     model.group_channel_ratio_min
   )
 
-  let priceInUSD = (model.model_price || 0) * minRatio
-
-  priceInUSD = applyRechargeRate(
-    priceInUSD,
-    showWithRecharge,
-    priceRate,
-    usdExchangeRate
-  )
-
-  return formatCurrencyFromUSD(priceInUSD, {
-    digitsLarge: 4,
-    digitsSmall: 4,
-    abbreviate: false,
-  })
+  return formatUSDPrice(calculateRequestPriceUSD(model, minRatio), 4)
 }
 
 /**
@@ -359,4 +327,10 @@ export function formatRatioLabel(ratio: number): string {
     ? ratio.toString()
     : ratio.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')
   return `x${formatted}`
+}
+
+export function formatEffectiveRatioRange(range: EffectiveRatioRange): string {
+  const min = formatRatioLabel(range.min)
+  if (range.min === range.max) return min
+  return `${min} ~ ${formatRatioLabel(range.max)}`
 }

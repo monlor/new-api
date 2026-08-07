@@ -18,27 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useStatus } from '@/hooks/use-status'
 import { getPricing } from '../api'
 
 export function usePricingData() {
-  const { status } = useStatus()
-
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['pricing'],
     queryFn: getPricing,
     staleTime: 5 * 60 * 1000,
   })
-
-  // Ensure rates never reach zero to prevent division errors
-  const priceRate = useMemo(
-    () => Math.max((status?.price as number) ?? 1, 0.001),
-    [status?.price]
-  )
-  const usdExchangeRate = useMemo(
-    () => Math.max((status?.usd_exchange_rate as number) ?? priceRate, 0.001),
-    [status?.usd_exchange_rate, priceRate]
-  )
 
   const models = useMemo(() => {
     if (!data?.data || !data?.vendors) return []
@@ -70,7 +57,5 @@ export function usePricingData() {
     isLoading,
     error,
     refetch,
-    priceRate,
-    usdExchangeRate,
   }
 }

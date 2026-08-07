@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { Tag as TagIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useSystemConfigStore } from '@/stores/system-config-store'
 import { cn } from '@/lib/utils'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 import { Badge } from '@/components/ui/badge'
 import { StaticDataTable } from '@/components/data-table'
 import {
@@ -41,6 +41,8 @@ import {
   type RequestRuleGroup,
   type TierCondition,
 } from '../lib/billing-expr'
+import { formatDynamicUnitPrice } from '../lib/dynamic-price'
+import type { EffectiveRatioRange, TokenUnit } from '../types'
 
 type DynamicPricingBreakdownProps = {
   billingExpr: string | null | undefined
@@ -57,6 +59,14 @@ type DynamicPricingBreakdownProps = {
    * call they are inspecting. Defaults to false (show all configured prices).
    */
   hideCacheColumns?: boolean
+  /** Optional model-pricing context. Omitted by usage logs to preserve /1M semantics. */
+  priceContext?: {
+    tokenUnit: TokenUnit
+    ratioRange?: EffectiveRatioRange
+  }
+  /** Keep request-rule details while a caller renders tier prices elsewhere. */
+  showTierPrices?: boolean
+  showHeader?: boolean
 }
 
 const VAR_LABELS: Record<string, string> = {
@@ -150,12 +160,15 @@ export function DynamicPricingBreakdown({
   billingExpr,
   matchedTierLabel,
   hideCacheColumns = false,
+  priceContext,
+  showTierPrices = true,
+  showHeader = true,
 }: DynamicPricingBreakdownProps) {
   const { t } = useTranslation()
   const expr = billingExpr || ''
   const currency = useSystemConfigStore((s) => s.config.currency)
-
-  const { symbol, rate } = useMemo(() => {
+  const tokenUnitLabel = priceContext?.tokenUnit === 'K' ? '1K' : '1M'
+  const legacyCurrency = useMemo(() => {
     if (currency.quotaDisplayType === 'CNY') {
       return { symbol: '¥', rate: currency.usdExchangeRate || 7 }
     }
@@ -167,6 +180,12 @@ export function DynamicPricingBreakdown({
     }
     return { symbol: '$', rate: 1 }
   }, [currency])
+  const formatTierPrice = (value: number) => {
+    if (priceContext) {
+      return formatDynamicUnitPrice(value, priceContext)
+    }
+    return `${legacyCurrency.symbol}${(value * legacyCurrency.rate).toFixed(4)}`
+  }
 
   const { tiers, ruleGroups } = useMemo(() => {
     const split = splitBillingExprAndRequestRules(expr)
@@ -183,31 +202,62 @@ export function DynamicPricingBreakdown({
   const normalizedMatchedTierLabel = normalizeTierLabel(
     matchedTierLabel ?? undefined
   )
+  const requestRules = hasRules ? (
+    <div>
+      <div className='text-foreground mb-2 text-sm font-semibold'>
+        {t('Conditional multipliers')}
+      </div>
+      <ul className='space-y-1.5'>
+        {ruleGroups.map((group, gi) => (
+          <li
+            key={`group-${gi}`}
+            className='bg-muted/50 flex items-center justify-between gap-3 rounded-md px-3 py-2'
+          >
+            <span className='text-foreground text-sm break-all'>
+              {describeGroup(group, t)}
+            </span>
+            <Badge
+              variant='secondary'
+              className='shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+            >
+              {group.multiplier}x
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null
 
   if (!expr) return null
 
   if (!hasTiers) {
     return (
       <section className='min-w-0 py-4'>
-        <div className='mb-3 flex items-center gap-2'>
-          <span className='inline-flex size-6 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-500/20 dark:text-amber-300'>
-            <TagIcon className='size-3.5' />
-          </span>
-          <div>
-            <div className='text-foreground text-base font-medium'>
-              {t('Special billing expression')}
+        {showTierPrices && (
+          <>
+            <div className='mb-3 flex items-center gap-2'>
+              <span className='inline-flex size-6 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-500/20 dark:text-amber-300'>
+                <TagIcon className='size-3.5' />
+              </span>
+              <div>
+                <div className='text-foreground text-base font-medium'>
+                  {t('Special billing expression')}
+                </div>
+                <div className='text-muted-foreground text-xs'>
+                  {t('Unable to parse structured pricing')}
+                </div>
+              </div>
             </div>
-            <div className='text-muted-foreground text-xs'>
-              {t('Unable to parse structured pricing')}
+            <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
+              {t('Raw expression')}
             </div>
-          </div>
-        </div>
-        <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
-          {t('Raw expression')}
-        </div>
-        <code className='text-muted-foreground block text-xs break-all'>
-          {expr}
-        </code>
+            <code className='text-muted-foreground block text-xs break-all'>
+              {expr}
+            </code>
+          </>
+        )}
+        {showTierPrices && requestRules && <div className='mt-4' />}
+        {requestRules}
       </section>
     )
   }
@@ -222,21 +272,23 @@ export function DynamicPricingBreakdown({
 
   return (
     <section className='min-w-0 py-3 sm:py-4'>
-      <div className='mb-3 flex items-start gap-2 sm:mb-4'>
-        <span className='mt-0.5 inline-flex size-6 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-500/20 dark:text-amber-300'>
-          <TagIcon className='size-3.5' />
-        </span>
-        <div>
-          <div className='text-foreground text-base font-medium'>
-            {t('Dynamic Pricing')}
-          </div>
-          <div className='text-muted-foreground text-xs'>
-            {t('Prices vary by usage tier and request conditions')}
+      {showHeader && (
+        <div className='mb-3 flex items-start gap-2 sm:mb-4'>
+          <span className='mt-0.5 inline-flex size-6 items-center justify-center rounded-lg bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-500/20 dark:text-amber-300'>
+            <TagIcon className='size-3.5' />
+          </span>
+          <div>
+            <div className='text-foreground text-base font-medium'>
+              {t('Dynamic Pricing')}
+            </div>
+            <div className='text-muted-foreground text-xs'>
+              {t('Prices vary by usage tier and request conditions')}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {hasTiers && (
+      {hasTiers && showTierPrices && (
         <div className='mb-3 sm:mb-4'>
           <div className='text-foreground mb-2 text-sm font-semibold'>
             {t('Tiered price table')}
@@ -286,11 +338,10 @@ export function DynamicPricingBreakdown({
                         <div key={v.field} className='min-w-0'>
                           <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
                             {t(v.shortLabel)}
+                            {priceContext && ` /${tokenUnitLabel}`}
                           </div>
                           <div className='truncate font-mono text-sm font-semibold'>
-                            {value > 0
-                              ? `${symbol}${(value * rate).toFixed(4)}`
-                              : '-'}
+                            {value > 0 ? formatTierPrice(value) : '-'}
                           </div>
                         </div>
                       )
@@ -356,7 +407,9 @@ export function DynamicPricingBreakdown({
               },
               ...visiblePriceFields.map((v, index) => ({
                 id: v.field ?? `price-${index}`,
-                header: t(v.shortLabel),
+                header: priceContext
+                  ? `${t(v.shortLabel)} /${tokenUnitLabel}`
+                  : t(v.shortLabel),
                 className: 'text-muted-foreground py-2 text-right font-medium',
                 cellClassName: 'py-2.5 text-right align-top font-mono',
                 cell: (tier: ParsedTier) => {
@@ -365,7 +418,7 @@ export function DynamicPricingBreakdown({
                   )
                   return value > 0 ? (
                     <span className='font-semibold'>
-                      {`${symbol}${(value * rate).toFixed(4)}`}
+                      {formatTierPrice(value)}
                     </span>
                   ) : (
                     '-'
@@ -377,31 +430,7 @@ export function DynamicPricingBreakdown({
         </div>
       )}
 
-      {hasRules && (
-        <div>
-          <div className='text-foreground mb-2 text-sm font-semibold'>
-            {t('Conditional multipliers')}
-          </div>
-          <ul className='space-y-1.5'>
-            {ruleGroups.map((group, gi) => (
-              <li
-                key={`group-${gi}`}
-                className='bg-muted/50 flex items-center justify-between gap-3 rounded-md px-3 py-2'
-              >
-                <span className='text-foreground text-sm break-all'>
-                  {describeGroup(group, t)}
-                </span>
-                <Badge
-                  variant='secondary'
-                  className='shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
-                >
-                  {group.multiplier}x
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {requestRules}
     </section>
   )
 }
