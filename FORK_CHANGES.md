@@ -54,10 +54,18 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 个人资料 / 仪表盘余额按支付网关货币显示
 - 充值表单支持按本地货币输入
 - 统一货币显示：`formatCurrencyFromUSD` / `formatQuotaWithCurrency`（不再用 wallet 内部 `formatPaymentCurrency`）
+- 钱包充值与订阅购买复用统一支付方式选择器，并按余额、银行卡、Epay、普通方式、虚拟货币稳定排序
 - 修复：货币符号、转账显示货币、低于全局下限禁用按钮、zh-TW 排除简中 CNY 覆盖
 
 **涉及文件（后端）：** `setting/operation_setting/payment_setting.go`、`controller/topup.go`、`controller/misc.go`、`model/topup.go`、`model/option.go`
-**涉及文件（前端）：** `web/default/src/features/wallet/**`、`web/default/src/lib/currency.ts`、`web/default/src/hooks/use-system-config.ts`、`web/default/src/stores/system-config-store.ts`
+**涉及文件（前端）：** `web/default/src/features/wallet/**`、`web/default/src/features/subscriptions/components/dialogs/subscription-purchase-dialog.tsx`、`web/default/src/i18n/locales/*.json`、`web/default/src/lib/currency.ts`、`web/default/src/hooks/use-system-config.ts`、`web/default/src/stores/system-config-store.ts`
+
+### Stripe 支付兼容性 (Stripe Payments)
+
+- 将 Stripe Go SDK 从 `v81.4.0` 升级到 `v82.5.1`（Basil API），恢复 Managed Payments 的 Checkout Session 创建兼容性。
+- 修复订阅模式 Checkout 参数：新客户仅传 `customer_email`（若有），不再传仅限 payment 模式的 `customer_creation`；已有 Stripe Customer 仍只传 `customer`。充值与 Webhook 逻辑保持不变。
+
+**涉及文件：** `go.mod`、`go.sum`、`controller/topup_stripe.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_stripe_test.go`、`THIRD-PARTY-LICENSES.md`
 
 ## 四、邀请 / 返佣 (Invite & Affiliate)
 

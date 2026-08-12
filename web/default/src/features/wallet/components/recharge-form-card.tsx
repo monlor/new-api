@@ -19,6 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect, useRef } from 'react'
 import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useSystemConfigStore } from '@/stores/system-config-store'
+import {
+  formatCurrencyFromUSD,
+  getCurrencyDisplay,
+  getCurrencyLabel,
+} from '@/lib/currency'
 import { cn } from '@/lib/utils'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -27,24 +33,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import {
-  formatCurrencyFromUSD,
-  formatLocalCurrencyAmount,
-  getCurrencyDisplay,
-  getCurrencyLabel,
-} from '@/lib/currency'
-import { useSystemConfigStore } from '@/stores/system-config-store'
-import {
-  getDiscountLabel,
-  getPaymentIcon,
-  getMinTopupAmount,
-} from '../lib'
+import { getDiscountLabel, getPaymentIcon, getMinTopupAmount } from '../lib'
+import { classifyPaymentMethod } from '../lib/payment-methods'
 import type {
   PaymentMethod,
   PresetAmount,
@@ -53,20 +43,26 @@ import type {
   WaffoPayMethod,
 } from '../types'
 import { CreemProductsSection } from './creem-products-section'
+import {
+  PaymentMethodSelector,
+  type PaymentMethodSelectorItem,
+} from './payment-method-selector'
 
 // These helpers read from the Zustand store on each call and have no component
 // dependencies, so they live at module level — stable references, no closure issues.
 function usdToDisplay(usd: number): number {
   const { meta } = getCurrencyDisplay()
   if (meta.kind === 'tokens') return usd
-  const rate = meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
+  const rate =
+    meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
   return usd * rate
 }
 
 function displayToUsd(display: number): number {
   const { meta } = getCurrencyDisplay()
   if (meta.kind === 'tokens') return display
-  const rate = meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
+  const rate =
+    meta.kind === 'currency' || meta.kind === 'custom' ? meta.exchangeRate : 1
   return rate > 0 ? display / rate : display
 }
 
@@ -129,7 +125,9 @@ export function RechargeFormCard({
   // so they always return the latest config when called during render.
   const currencyLabel = getCurrencyLabel()
 
-  const [localAmount, setLocalAmount] = useState(usdToDisplay(topupAmount).toString())
+  const [localAmount, setLocalAmount] = useState(
+    usdToDisplay(topupAmount).toString()
+  )
 
   // While the user is focused on the input, suppress syncing from parent so
   // typing (including clearing) never snaps back.
@@ -162,9 +160,64 @@ export function RechargeFormCard({
     Array.isArray(topupInfo?.pay_methods) && topupInfo.pay_methods.length > 0
   const hasWaffoPaymentMethods =
     Array.isArray(waffoPayMethods) && waffoPayMethods.length > 0
+  const hasSelectablePaymentMethods =
+    hasStandardPaymentMethods ||
+    (!!enableWaffoTopup && hasWaffoPaymentMethods && !!onWaffoMethodSelect)
   const minTopup = getMinTopupAmount(topupInfo)
   const minTopupDisplay = usdToDisplay(minTopup)
   const redemptionEnabled = topupInfo?.enable_redemption !== false
+  const paymentMethodItems: PaymentMethodSelectorItem[] = [
+    ...(topupInfo?.pay_methods || []).map((method, index) => {
+      const effectiveMin = Math.max(method.min_topup || 0, minTopup)
+      const belowMin = effectiveMin > topupAmount
+      const isStripe = method.type.toLowerCase() === 'stripe'
+
+      return {
+        id: `epay-${method.type}-${index}`,
+        label: isStripe ? t('Credit Card (Stripe)') : method.name,
+        category: classifyPaymentMethod({
+          type: method.type,
+          name: method.name,
+          provider: 'epay',
+        }),
+        icon: getPaymentIcon(method.type, 'h-4 w-4', method.icon, method.name),
+        loading: paymentLoading === method.type,
+        disabled: belowMin || !!paymentLoading,
+        disabledReason: belowMin
+          ? t('Minimum topup amount: {{amount}}', {
+              amount: effectiveMin,
+            })
+          : undefined,
+        onSelect: () => onPaymentMethodSelect(method),
+      } satisfies PaymentMethodSelectorItem
+    }),
+    ...(enableWaffoTopup && onWaffoMethodSelect
+      ? waffoPayMethods || []
+      : []
+    ).map((method, index) => {
+      const loadingKey = `waffo-${index}`
+      const effectiveMin = Math.max(waffoMinTopup || 0, minTopup)
+      const belowMin = effectiveMin > topupAmount
+
+      return {
+        id: `${loadingKey}-${method.name}`,
+        label: method.name,
+        category: classifyPaymentMethod({
+          type: method.payMethodType,
+          name: `${method.name} ${method.payMethodName || ''}`,
+        }),
+        icon: getPaymentIcon('waffo', 'h-4 w-4', method.icon, method.name),
+        loading: paymentLoading === loadingKey,
+        disabled: belowMin || !!paymentLoading,
+        disabledReason: belowMin
+          ? t('Minimum topup amount: {{amount}}', {
+              amount: effectiveMin,
+            })
+          : undefined,
+        onSelect: () => onWaffoMethodSelect?.(method, index),
+      } satisfies PaymentMethodSelectorItem
+    }),
+  ]
 
   if (loading) {
     return (
@@ -304,8 +357,12 @@ export function RechargeFormCard({
                     inputMode='decimal'
                     value={localAmount}
                     onChange={(e) => handleAmountChange(e.target.value)}
-                    onFocus={() => { isEditingRef.current = true }}
-                    onBlur={() => { isEditingRef.current = false }}
+                    onFocus={() => {
+                      isEditingRef.current = true
+                    }}
+                    onBlur={() => {
+                      isEditingRef.current = false
+                    }}
                     placeholder={`Minimum ${minTopupDisplay}`}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
@@ -324,57 +381,9 @@ export function RechargeFormCard({
                 <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
                   {t('Payment Method')}
                 </Label>
-                {hasStandardPaymentMethods ? (
-                  <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
-                    {topupInfo?.pay_methods?.map((method) => {
-                      const methodMin = method.min_topup || 0
-                      const effectiveMin = Math.max(methodMin, minTopup)
-                      const disabled = effectiveMin > topupAmount
-
-                      const button = (
-                        <Button
-                          key={method.type}
-                          variant='outline'
-                          onClick={() => onPaymentMethodSelect(method)}
-                          disabled={disabled || !!paymentLoading}
-                          className='h-9 min-w-0 w-full justify-start gap-2 rounded-lg px-3'
-                        >
-                          {paymentLoading === method.type ? (
-                            <Loader2 className='h-4 w-4 animate-spin' />
-                          ) : (
-                            getPaymentIcon(
-                              method.type,
-                              'h-4 w-4',
-                              method.icon,
-                              method.name
-                            )
-                          )}
-                          <span className='truncate'>{method.name}</span>
-                        </Button>
-                      )
-
-                      return disabled ? (
-                        <TooltipProvider key={method.type}>
-                          <Tooltip>
-                            <TooltipTrigger
-                              className='inline-flex cursor-not-allowed'
-                              render={<span />}
-                            >
-                              {button}
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {t('Minimum topup amount: {{amount}}', {
-                                amount: effectiveMin,
-                              })}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      ) : (
-                        button
-                      )
-                    })}
-                  </div>
-                ) : hasWaffoPaymentMethods ? null : (
+                {hasSelectablePaymentMethods ? (
+                  <PaymentMethodSelector items={paymentMethodItems} />
+                ) : (
                   <Alert>
                     <AlertDescription>
                       {t(
@@ -384,66 +393,6 @@ export function RechargeFormCard({
                   </Alert>
                 )}
               </div>
-
-              {enableWaffoTopup &&
-                hasWaffoPaymentMethods &&
-                onWaffoMethodSelect && (
-                  <div className='space-y-2.5 sm:space-y-3'>
-                    <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                      {t('Waffo Payment')}
-                    </Label>
-                    <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
-                      {waffoPayMethods?.map((method, index) => {
-                        const loadingKey = `waffo-${index}`
-                        const waffoMin = Math.max(waffoMinTopup || 0, minTopup)
-                        const belowMin = waffoMin > topupAmount
-
-                        const button = (
-                          <Button
-                            key={`${method.name}-${index}`}
-                            variant='outline'
-                            onClick={() => onWaffoMethodSelect(method, index)}
-                            disabled={belowMin || !!paymentLoading}
-                            className='h-9 min-w-0 w-full justify-start gap-2 rounded-lg px-3'
-                          >
-                            {paymentLoading === loadingKey ? (
-                              <Loader2 className='h-4 w-4 animate-spin' />
-                            ) : method.icon ? (
-                              <img
-                                src={method.icon}
-                                alt={method.name}
-                                className='h-4 w-4 object-contain'
-                              />
-                            ) : (
-                              getPaymentIcon('waffo')
-                            )}
-                            <span className='truncate'>{method.name}</span>
-                          </Button>
-                        )
-
-                        return belowMin ? (
-                          <TooltipProvider key={`${method.name}-${index}`}>
-                            <Tooltip>
-                              <TooltipTrigger
-                                className='inline-flex cursor-not-allowed'
-                                render={<span />}
-                              >
-                                {button}
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {t('Minimum topup amount: {{amount}}', {
-                                  amount: waffoMin,
-                                })}
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : (
-                          button
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
             </>
           )}
         </div>

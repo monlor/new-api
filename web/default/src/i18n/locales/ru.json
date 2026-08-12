@@ -1056,6 +1056,7 @@
     "Credentials": "Учетные данные",
     "Credentials verification failed": "Не удалось проверить учетные данные",
     "Credentials verification failed — double-check Merchant ID and API private key.": "Не удалось проверить учетные данные — проверьте Merchant ID и приватный ключ API.",
+    "Credit Card (Stripe)": "Кредитная карта (Stripe)",
     "Credit remaining": "Остаток средств",
     "Creem API key (leave blank unless updating)": "Ключ API Creem (оставьте пустым, если не обновляете)",
     "Creem Gateway": "Шлюз Creem",

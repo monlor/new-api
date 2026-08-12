@@ -1056,6 +1056,7 @@
     "Credentials": "憑證",
     "Credentials verification failed": "憑證驗證失敗",
     "Credentials verification failed — double-check Merchant ID and API private key.": "憑證驗證失敗，請檢查 Merchant ID 和 API 私鑰。",
+    "Credit Card (Stripe)": "信用卡（Stripe）",
     "Credit remaining": "剩餘額度",
     "Creem API key (leave blank unless updating)": "Creem API 密鑰（除非更新，否則留空）",
     "Creem Gateway": "Creem 網關",

@@ -1056,6 +1056,7 @@
     "Credentials": "認証情報",
     "Credentials verification failed": "認証情報の検証に失敗しました",
     "Credentials verification failed — double-check Merchant ID and API private key.": "認証情報の検証に失敗しました — マーチャントIDとAPIプライベートキーを再確認してください。",
+    "Credit Card (Stripe)": "クレジットカード（Stripe）",
     "Credit remaining": "残りクレジット",
     "Creem API key (leave blank unless updating)": "Creem APIキー（更新する場合を除き空欄のまま）",
     "Creem Gateway": "Creem ゲートウェイ",

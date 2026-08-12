@@ -11,8 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
-	"github.com/stripe/stripe-go/v81"
-	"github.com/stripe/stripe-go/v81/checkout/session"
+	"github.com/stripe/stripe-go/v82"
+	"github.com/stripe/stripe-go/v82/checkout/session"
 	"github.com/thanhpk/randstr"
 )
 
@@ -111,11 +111,27 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
 	stripe.Key = setting.StripeApiSecret
+	returnURL := paymentReturnPath("/console/topup")
+	params := buildStripeSubscriptionCheckoutParams(
+		referenceId,
+		customerId,
+		email,
+		priceId,
+		returnURL,
+	)
 
+	result, err := session.New(params)
+	if err != nil {
+		return "", err
+	}
+	return result.URL, nil
+}
+
+func buildStripeSubscriptionCheckoutParams(referenceId string, customerId string, email string, priceId string, returnURL string) *stripe.CheckoutSessionParams {
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(paymentReturnPath("/console/topup")),
-		CancelURL:         stripe.String(paymentReturnPath("/console/topup")),
+		SuccessURL:        stripe.String(returnURL),
+		CancelURL:         stripe.String(returnURL),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),
@@ -129,14 +145,9 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		if "" != email {
 			params.CustomerEmail = stripe.String(email)
 		}
-		params.CustomerCreation = stripe.String(string(stripe.CheckoutSessionCustomerCreationAlways))
 	} else {
 		params.Customer = stripe.String(customerId)
 	}
 
-	result, err := session.New(params)
-	if err != nil {
-		return "", err
-	}
-	return result.URL, nil
+	return params
 }

@@ -1056,6 +1056,7 @@
     "Credentials": "Identifiants",
     "Credentials verification failed": "Échec de la vérification des identifiants",
     "Credentials verification failed — double-check Merchant ID and API private key.": "Échec de la vérification des identifiants — vérifiez l’ID marchand et la clé privée API.",
+    "Credit Card (Stripe)": "Carte de crédit (Stripe)",
     "Credit remaining": "Crédit restant",
     "Creem API key (leave blank unless updating)": "Clé API Creem (laissez vide sauf si mise à jour)",
     "Creem Gateway": "Passerelle Creem",
