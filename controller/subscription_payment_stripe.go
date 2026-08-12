@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v82"
+	billingportalsession "github.com/stripe/stripe-go/v82/billingportal/session"
 	"github.com/stripe/stripe-go/v82/checkout/session"
 	"github.com/thanhpk/randstr"
 )
@@ -79,7 +81,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	reference := fmt.Sprintf("sub-stripe-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
 
-	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
+	payLink, err := genStripeSubscriptionLink(referenceId, user.Id, plan.Id, user.StripeCustomer, user.Email, plan.StripePriceId)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
@@ -109,11 +111,13 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	})
 }
 
-func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
+func genStripeSubscriptionLink(referenceId string, userId int, planId int, customerId string, email string, priceId string) (string, error) {
 	stripe.Key = setting.StripeApiSecret
 	returnURL := paymentReturnPath("/console/topup")
 	params := buildStripeSubscriptionCheckoutParams(
 		referenceId,
+		userId,
+		planId,
 		customerId,
 		email,
 		priceId,
@@ -127,7 +131,12 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 	return result.URL, nil
 }
 
-func buildStripeSubscriptionCheckoutParams(referenceId string, customerId string, email string, priceId string, returnURL string) *stripe.CheckoutSessionParams {
+func buildStripeSubscriptionCheckoutParams(referenceId string, userId int, planId int, customerId string, email string, priceId string, returnURL string) *stripe.CheckoutSessionParams {
+	metadata := map[string]string{
+		"trade_no": referenceId,
+		"user_id":  strconv.Itoa(userId),
+		"plan_id":  strconv.Itoa(planId),
+	}
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(returnURL),
@@ -138,7 +147,11 @@ func buildStripeSubscriptionCheckoutParams(referenceId string, customerId string
 				Quantity: stripe.Int64(1),
 			},
 		},
-		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		Mode:             stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		SubscriptionData: &stripe.CheckoutSessionSubscriptionDataParams{Metadata: metadata},
+	}
+	for key, value := range metadata {
+		params.AddMetadata(key, value)
 	}
 
 	if "" == customerId {
@@ -150,4 +163,34 @@ func buildStripeSubscriptionCheckoutParams(referenceId string, customerId string
 	}
 
 	return params
+}
+
+func SubscriptionStripePortal(c *gin.Context) {
+	var req struct {
+		UserSubscriptionId int `json:"user_subscription_id" binding:"required,gt=0"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+		common.ApiErrorMsg(c, "Stripe 未配置或密钥无效")
+		return
+	}
+	customerId, err := model.GetStripeCustomerForUserSubscription(c.GetInt("id"), req.UserSubscriptionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	stripe.Key = setting.StripeApiSecret
+	portal, err := billingportalsession.New(&stripe.BillingPortalSessionParams{
+		Customer:  stripe.String(customerId),
+		ReturnURL: stripe.String(paymentReturnPath("/console/topup")),
+	})
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe Customer Portal 创建失败 user_id=%d error=%q", c.GetInt("id"), err.Error()))
+		common.ApiErrorMsg(c, "打开 Stripe 订阅管理失败")
+		return
+	}
+	common.ApiSuccess(c, gin.H{"portal_url": portal.URL})
 }

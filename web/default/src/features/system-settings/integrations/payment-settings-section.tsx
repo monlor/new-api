@@ -21,7 +21,7 @@ import * as z from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Code2, Eye, ShieldAlert } from 'lucide-react'
+import { Code2, Eye, ShieldAlert, Webhook } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -1252,27 +1252,59 @@ export function PaymentSettingsSection({
               </p>
             </div>
 
-            <div className='rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-950 dark:text-blue-100'>
-              <p className='mb-2 font-medium'>{t('Webhook Configuration:')}</p>
-              <ul className='list-inside list-disc space-y-1'>
-                <li>
-                  {t('Webhook URL:')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
-                    {'<ServerAddress>/api/stripe/webhook'}
-                  </code>
-                </li>
-                <li>
-                  {t('Required events:')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
-                    {t('checkout.session.completed')}
-                  </code>{' '}
-                  {t('and')}{' '}
-                  <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
-                    {t('checkout.session.expired')}
-                  </code>
-                </li>
-                <li>
-                  {t('Configure at:')}{' '}
+            <Alert className='border-blue-200 bg-blue-50/70 dark:border-blue-900 dark:bg-blue-950/40'>
+              <Webhook className='text-blue-700 dark:text-blue-300' />
+              <AlertTitle>{t('Stripe production checklist')}</AlertTitle>
+              <AlertDescription className='space-y-3 text-xs text-pretty'>
+                <p>
+                  {t(
+                    'Complete every item below before enabling Stripe payments in production.'
+                  )}
+                </p>
+                <ul className='list-disc space-y-1.5 ps-4'>
+                  <li>
+                    {t('Production webhook URL:')}{' '}
+                    <code className='rounded bg-blue-100 px-1 py-0.5 text-[11px] break-all dark:bg-blue-900'>
+                      {'<SiteAddress>/api/stripe/webhook'}
+                    </code>
+                    {t('；signing secret must start with')}{' '}
+                    <code className='rounded bg-blue-100 px-1 py-0.5 text-[11px] dark:bg-blue-900'>
+                      whsec_
+                    </code>
+                  </li>
+                  <li>
+                    {t('Subscribe to all required webhook events:')}{' '}
+                    <span className='font-mono text-[11px] break-words'>
+                      checkout.session.completed, checkout.session.expired,
+                      checkout.session.async_payment_succeeded,
+                      checkout.session.async_payment_failed, invoice.paid,
+                      invoice.payment_failed, customer.subscription.updated,
+                      customer.subscription.deleted
+                    </span>
+                  </li>
+                  <li>
+                    {t(
+                      'Enable payment-method updates, invoices, and cancellation in Customer Portal; keep plan switching disabled for this phase.'
+                    )}
+                  </li>
+                  <li>
+                    {t(
+                      'Each subscription Price must be recurring, and its billing interval must match the local plan duration.'
+                    )}
+                  </li>
+                  <li>
+                    {t(
+                      'Test and live API keys, webhook secrets, Prices, and Customer Portal settings belong to separate modes; configure every item in the same mode.'
+                    )}
+                  </li>
+                  <li>
+                    {t(
+                      'Only new subscriptions purchased through Stripe with a saved provider mapping can open Customer Portal; non-Stripe and legacy unmapped subscriptions cannot.'
+                    )}
+                  </li>
+                </ul>
+                <p>
+                  {t('Configure in')}{' '}
                   <a
                     href='https://dashboard.stripe.com/developers'
                     target='_blank'
@@ -1281,9 +1313,10 @@ export function PaymentSettingsSection({
                   >
                     {t('Stripe Dashboard')}
                   </a>
-                </li>
-              </ul>
-            </div>
+                  .
+                </p>
+              </AlertDescription>
+            </Alert>
 
             <div className='grid gap-6 md:grid-cols-3'>
               <FormField

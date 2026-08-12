@@ -173,48 +173,62 @@ func StripeWebhook(c *gin.Context) {
 
 	callerIp := c.ClientIP()
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 验签成功 event_type=%s client_ip=%s path=%q", string(event.Type), callerIp, c.Request.RequestURI))
+	var handleErr error
 	switch event.Type {
 	case stripe.EventTypeCheckoutSessionCompleted:
-		sessionCompleted(ctx, event, callerIp)
+		handleErr = sessionCompleted(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionExpired:
 		sessionExpired(ctx, event)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentSucceeded:
-		sessionAsyncPaymentSucceeded(ctx, event, callerIp)
+		handleErr = sessionAsyncPaymentSucceeded(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentFailed:
 		sessionAsyncPaymentFailed(ctx, event, callerIp)
+	case stripe.EventTypeInvoicePaid:
+		handleErr = stripeInvoicePaid(event)
+	case stripe.EventTypeInvoicePaymentFailed:
+		handleErr = stripeInvoicePaymentFailed(event)
+	case stripe.EventTypeCustomerSubscriptionUpdated:
+		handleErr = stripeSubscriptionChanged(event, false)
+	case stripe.EventTypeCustomerSubscriptionDeleted:
+		handleErr = stripeSubscriptionChanged(event, true)
 	default:
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 忽略事件 event_type=%s client_ip=%s", string(event.Type), callerIp))
+	}
+	if handleErr != nil {
+		logger.LogError(ctx, fmt.Sprintf("Stripe webhook 处理失败 event_id=%s event_type=%s error=%q", event.ID, string(event.Type), handleErr.Error()))
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
 	}
 
 	c.Status(http.StatusOK)
 }
 
-func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionCompleted(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	status := event.GetObjectValue("status")
 	if "complete" != status {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe checkout.completed 状态异常，忽略处理 trade_no=%s status=%s client_ip=%s", referenceId, status, callerIp))
-		return
+		return nil
 	}
 
 	paymentStatus := event.GetObjectValue("payment_status")
 	if paymentStatus != "paid" {
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe Checkout 支付未完成，等待异步结果 trade_no=%s payment_status=%s client_ip=%s", referenceId, paymentStatus, callerIp))
-		return
+		return nil
 	}
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentSucceeded handles delayed payment methods (bank transfer, SEPA, etc.)
 // that confirm payment after the checkout session completes.
-func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) {
+func sessionAsyncPaymentSucceeded(ctx context.Context, event stripe.Event, callerIp string) error {
 	customerId := event.GetObjectValue("customer")
 	referenceId := event.GetObjectValue("client_reference_id")
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 异步支付成功 trade_no=%s client_ip=%s", referenceId, callerIp))
 
-	fulfillOrder(ctx, event, referenceId, customerId, callerIp)
+	return fulfillOrder(ctx, event, referenceId, customerId, callerIp)
 }
 
 // sessionAsyncPaymentFailed marks orders as failed when delayed payment methods
@@ -256,10 +270,10 @@ func sessionAsyncPaymentFailed(ctx context.Context, event stripe.Event, callerIp
 }
 
 // fulfillOrder is the shared logic for crediting quota after payment is confirmed.
-func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) {
+func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, customerId string, callerIp string) error {
 	if len(referenceId) == 0 {
 		logger.LogWarn(ctx, fmt.Sprintf("Stripe 完成订单时缺少订单号 client_ip=%s", callerIp))
-		return
+		return errors.New("Stripe checkout event is missing client_reference_id")
 	}
 
 	LockOrder(referenceId)
@@ -270,23 +284,200 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(payload), model.PaymentProviderStripe, ""); err == nil {
+	if order := model.GetSubscriptionOrderByTradeNo(referenceId); order != nil {
+		var checkout stripe.CheckoutSession
+		if err := common.Unmarshal(event.Data.Raw, &checkout); err != nil {
+			return err
+		}
+		if checkout.Subscription == nil || checkout.Subscription.ID == "" || checkout.Customer == nil || checkout.Customer.ID == "" {
+			return errors.New("Stripe subscription checkout is missing customer or subscription")
+		}
+		state := model.StripeSubscriptionState{
+			CustomerId: checkout.Customer.ID, SubscriptionId: checkout.Subscription.ID,
+			PriceId: stripeCheckoutPriceId(&checkout), Status: string(checkout.Subscription.Status),
+		}
+		if item := stripeSubscriptionItem(checkout.Subscription); item != nil {
+			state.PeriodStart = item.CurrentPeriodStart
+			state.PeriodEnd = item.CurrentPeriodEnd
+		}
+		state.CancelAtEnd = checkout.Subscription.CancelAtPeriodEnd
+		if err := model.CompleteStripeSubscriptionCheckout(event.ID, string(event.Type), event.Created, referenceId, common.GetJsonString(payload), state); err != nil {
+			return err
+		}
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
-		return
-	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
-		logger.LogError(ctx, fmt.Sprintf("Stripe 订阅订单处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-		return
+		return nil
 	}
 
 	err := model.Recharge(referenceId, customerId, callerIp)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
-		return
+		return err
 	}
 
 	total, _ := strconv.ParseFloat(event.GetObjectValue("amount_total"), 64)
 	currency := strings.ToUpper(event.GetObjectValue("currency"))
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值成功 trade_no=%s amount_total=%.2f currency=%s event_type=%s client_ip=%s", referenceId, total/100, currency, string(event.Type), callerIp))
+	return nil
+}
+
+func stripeSubscriptionItem(subscription *stripe.Subscription) *stripe.SubscriptionItem {
+	if subscription == nil || subscription.Items == nil {
+		return nil
+	}
+	for _, item := range subscription.Items.Data {
+		if item != nil && !item.Deleted {
+			return item
+		}
+	}
+	return nil
+}
+
+func stripeCheckoutPriceId(checkout *stripe.CheckoutSession) string {
+	if checkout == nil || checkout.LineItems == nil {
+		return ""
+	}
+	for _, item := range checkout.LineItems.Data {
+		if item != nil && item.Price != nil {
+			return item.Price.ID
+		}
+	}
+	return ""
+}
+
+func stripeSubscriptionState(subscription *stripe.Subscription) (model.StripeSubscriptionState, error) {
+	if subscription == nil || subscription.ID == "" {
+		return model.StripeSubscriptionState{}, errors.New("Stripe subscription id is missing")
+	}
+	state := model.StripeSubscriptionState{
+		SubscriptionId: subscription.ID,
+		Status:         string(subscription.Status),
+		CancelAtEnd:    subscription.CancelAtPeriodEnd,
+	}
+	if subscription.Customer != nil {
+		state.CustomerId = subscription.Customer.ID
+	}
+	item := stripeSubscriptionItem(subscription)
+	if item == nil {
+		return state, nil
+	}
+	state.PeriodStart = item.CurrentPeriodStart
+	state.PeriodEnd = item.CurrentPeriodEnd
+	if item.Price != nil {
+		state.PriceId = item.Price.ID
+	}
+	return state, nil
+}
+
+func stripeInvoiceSubscriptionId(invoice *stripe.Invoice) string {
+	if invoice == nil {
+		return ""
+	}
+	if invoice.Parent != nil && invoice.Parent.SubscriptionDetails != nil && invoice.Parent.SubscriptionDetails.Subscription != nil {
+		return invoice.Parent.SubscriptionDetails.Subscription.ID
+	}
+	if invoice.Lines != nil {
+		for _, line := range invoice.Lines.Data {
+			if line != nil && line.Subscription != nil && line.Subscription.ID != "" {
+				return line.Subscription.ID
+			}
+		}
+	}
+	return ""
+}
+
+func stripeInvoicePeriod(invoice *stripe.Invoice) (int64, int64) {
+	var start int64
+	var end int64
+	if invoice == nil || invoice.Lines == nil {
+		return start, end
+	}
+	for _, line := range invoice.Lines.Data {
+		if line == nil || line.Period == nil || line.Parent == nil || line.Parent.SubscriptionItemDetails == nil {
+			continue
+		}
+		if end == 0 || line.Period.End > end {
+			start = line.Period.Start
+			end = line.Period.End
+		}
+	}
+	return start, end
+}
+
+func stripeInvoiceSubscriptionPriceId(invoice *stripe.Invoice) (string, error) {
+	if invoice == nil || invoice.Lines == nil {
+		return "", errors.New("Stripe invoice is missing subscription price")
+	}
+	priceId := ""
+	for _, line := range invoice.Lines.Data {
+		if line == nil || line.Parent == nil || line.Parent.SubscriptionItemDetails == nil {
+			continue
+		}
+		if line.Pricing == nil || line.Pricing.PriceDetails == nil || line.Pricing.PriceDetails.Price == "" {
+			return "", errors.New("Stripe invoice subscription line is missing price")
+		}
+		linePriceId := line.Pricing.PriceDetails.Price
+		if priceId != "" && priceId != linePriceId {
+			return "", errors.New("Stripe invoice contains multiple subscription prices")
+		}
+		priceId = linePriceId
+	}
+	if priceId == "" {
+		return "", errors.New("Stripe invoice is missing subscription price")
+	}
+	return priceId, nil
+}
+
+func stripeInvoicePaid(event stripe.Event) error {
+	var invoice stripe.Invoice
+	if err := common.Unmarshal(event.Data.Raw, &invoice); err != nil {
+		return err
+	}
+	subscriptionId := stripeInvoiceSubscriptionId(&invoice)
+	if subscriptionId == "" {
+		return errors.New("Stripe invoice.paid is missing subscription")
+	}
+	periodStart, periodEnd := stripeInvoicePeriod(&invoice)
+	renewal := invoice.BillingReason == stripe.InvoiceBillingReasonSubscriptionCycle
+	if renewal && periodEnd <= 0 {
+		return errors.New("Stripe renewal invoice is missing subscription item period")
+	}
+	paidPriceId := ""
+	if renewal {
+		var err error
+		paidPriceId, err = stripeInvoiceSubscriptionPriceId(&invoice)
+		if err != nil {
+			return err
+		}
+	}
+	return model.ProcessStripeInvoicePaid(event.ID, string(event.Type), event.Created, subscriptionId, invoice.ID, periodStart, periodEnd, paidPriceId, renewal)
+}
+
+func stripeInvoicePaymentFailed(event stripe.Event) error {
+	var invoice stripe.Invoice
+	if err := common.Unmarshal(event.Data.Raw, &invoice); err != nil {
+		return err
+	}
+	subscriptionId := stripeInvoiceSubscriptionId(&invoice)
+	if subscriptionId == "" {
+		return errors.New("Stripe invoice.payment_failed is missing subscription")
+	}
+	_, periodEnd := stripeInvoicePeriod(&invoice)
+	return model.ProcessStripeInvoiceFailed(event.ID, string(event.Type), event.Created, subscriptionId, invoice.ID, periodEnd)
+}
+
+func stripeSubscriptionChanged(event stripe.Event, deleted bool) error {
+	var subscription stripe.Subscription
+	if err := common.Unmarshal(event.Data.Raw, &subscription); err != nil {
+		return err
+	}
+	state, err := stripeSubscriptionState(&subscription)
+	if err != nil {
+		return err
+	}
+	if !deleted && state.PeriodEnd <= 0 {
+		return errors.New("Stripe subscription update is missing item period")
+	}
+	return model.SyncStripeSubscription(event.ID, string(event.Type), event.Created, state, deleted)
 }
 
 func sessionExpired(ctx context.Context, event stripe.Event) {

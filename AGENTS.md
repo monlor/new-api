@@ -132,6 +132,12 @@ Never start or restart services using local commands (e.g., `go run`, `./new-api
 
 Do NOT run the backend or any infrastructure service (database, Redis, etc.) directly on the host machine. Docker Compose is the single source of truth for the dev environment.
 
+**Local UI test account:**
+- Username: `admin`
+- Password: `abc12345`
+- Use this account for local Docker development UI checks unless the user explicitly provides another account.
+- This credential is for the local development environment only. Never use it against production, external deployments, or third-party services.
+
 ### Rule 9: Pull Requests — Identify AI-Generated Contributions When Appropriate
 
 When creating a pull request:

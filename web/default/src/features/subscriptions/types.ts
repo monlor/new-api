@@ -69,8 +69,18 @@ export const userSubscriptionSchema = z.object({
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
+export interface ProviderSubscription {
+  provider: string
+  status: string
+  current_period_start: number
+  current_period_end: number
+  cancel_at_period_end: boolean
+  management_available: boolean
+}
+
 export interface UserSubscriptionRecord {
   subscription: UserSubscription
+  provider_subscription?: ProviderSubscription | null
 }
 
 // ============================================================================
@@ -111,6 +121,10 @@ export interface SubscriptionPayResponse {
   url?: string
 }
 
+export interface StripePortalResponse {
+  portal_url: string
+}
+
 export interface CreateUserSubscriptionRequest {
   plan_id: number
 }
@@ -136,4 +150,8 @@ export type UserSubscriptionBatchMap = Record<string, UserSubscription>
 // Dialog Types
 // ============================================================================
 
-export type SubscriptionsDialogType = 'create' | 'update' | 'toggle-status' | 'force-sync'
+export type SubscriptionsDialogType =
+  | 'create'
+  | 'update'
+  | 'toggle-status'
+  | 'force-sync'

@@ -45,6 +45,8 @@ func TestMain(m *testing.M) {
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&ProviderSubscription{},
+		&ProviderWebhookEvent{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
 	); err != nil {
@@ -67,6 +69,8 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")
+		DB.Exec("DELETE FROM provider_subscriptions")
+		DB.Exec("DELETE FROM provider_webhook_events")
 		DB.Exec("DELETE FROM user_oauth_bindings")
 		DB.Exec("DELETE FROM perf_metrics")
 	})

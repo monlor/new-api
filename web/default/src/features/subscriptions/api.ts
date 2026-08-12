@@ -22,9 +22,9 @@ import type {
   PlanRecord,
   PlanPayload,
   UserSubscriptionRecord,
-  UserSubscriptionBatchMap,
   CreateUserSubscriptionRequest,
   SubscriptionPayResponse,
+  StripePortalResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
 } from './types'
@@ -144,6 +144,15 @@ export async function paySubscriptionBalance(
   data: SubscriptionPayRequest
 ): Promise<SubscriptionPayResponse> {
   const res = await api.post('/api/subscription/balance/pay', data)
+  return res.data
+}
+
+export async function createStripePortalSession(
+  userSubscriptionId: number
+): Promise<ApiResponse<StripePortalResponse>> {
+  const res = await api.post('/api/subscription/stripe/portal', {
+    user_subscription_id: userSubscriptionId,
+  })
   return res.data
 }
 

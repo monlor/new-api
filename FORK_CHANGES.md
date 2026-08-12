@@ -45,8 +45,11 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 管理员强制同步套餐到生效中的订阅 (force-sync)
 - 批量查询用户订阅，并在用户列表 API 暴露
 - 购买弹窗额度展示优化、管理员侧用户订阅视图
+- Stripe 自动续费：保存 Customer/Subscription/Price 映射，幂等处理续费成功、扣款失败、订阅更新/删除事件；使用 Stripe 事件创建时间、账期和发票单调保护拒绝乱序回退；Customer Portal 套餐切换当前不受支持，订阅同步与续费发票均 fail closed 校验 Stripe Price、映射 Price 和本地套餐 Price 三者一致后，才推进本地有效期并重置周期额度
+- `/api/subscription/self` 暴露可空的支付渠道订阅状态，并提供鉴权后的 Stripe Customer Portal Session 接口；Portal 按当前用户与本地订阅 ID 精确解析 Customer
+- Stripe 设置页增加生产上线清单：Webhook URL/签名密钥与完整事件集、Customer Portal 功能边界、recurring Price 周期一致性、test/live 模式隔离，以及仅新购且已有 Stripe 映射的订阅可进入 Portal
 
-**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_waffo_pancake.go`、`model/subscription.go`、`router/api-router.go`、`service/billing_session.go`
+**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/wallet/components/subscription-plans-card.tsx`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
 
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
@@ -63,9 +66,10 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 ### Stripe 支付兼容性 (Stripe Payments)
 
 - 将 Stripe Go SDK 从 `v81.4.0` 升级到 `v82.5.1`（Basil API），恢复 Managed Payments 的 Checkout Session 创建兼容性。
-- 修复订阅模式 Checkout 参数：新客户仅传 `customer_email`（若有），不再传仅限 payment 模式的 `customer_creation`；已有 Stripe Customer 仍只传 `customer`。充值与 Webhook 逻辑保持不变。
+- 修复订阅模式 Checkout 参数：新客户仅传 `customer_email`（若有），不再传仅限 payment 模式的 `customer_creation`；已有 Stripe Customer 仍只传 `customer`。
+- Checkout 与 Subscription metadata 写入本地用户/套餐/订单标识；Webhook 按 Basil 的 subscription item 周期字段同步自动续费，并在事务提交失败时返回非 2xx 以触发 Stripe 重试。
 
-**涉及文件：** `go.mod`、`go.sum`、`controller/topup_stripe.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_stripe_test.go`、`THIRD-PARTY-LICENSES.md`
+**涉及文件：** `go.mod`、`go.sum`、`controller/topup_stripe.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_stripe_test.go`、`model/provider_subscription.go`、`model/provider_subscription_test.go`、`model/subscription.go`、`model/main.go`、`router/api-router.go`、`THIRD-PARTY-LICENSES.md`
 
 ## 四、邀请 / 返佣 (Invite & Affiliate)
 
@@ -120,6 +124,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 新增 air 热重载配置 `.air.toml`、`docker-compose.dev.yml`、`Dockerfile.dev`
 - CI：`DOCKERHUB_USERNAME` secret 动态镜像名；`docker-build.yml`、`docker-image-alpha.yml`、`docker-image-nightly.yml`
 - `.gitignore` 忽略 `tmp/`、`graphify-out/`
+- `AGENTS.md` 记录仅供本地 Docker UI 验证使用的固定测试账号；禁止用于生产、外部部署或第三方服务
 
 ## 十一、通知限流 (Notification Throttle)
 

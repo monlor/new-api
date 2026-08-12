@@ -17,11 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import {
+  Crown,
+  RefreshCw,
+  Sparkles,
+  Check,
+  ExternalLink,
+  Loader2,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatQuota } from '@/lib/format'
 import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -51,6 +58,7 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
   updateBillingPreference,
+  createStripePortalSession,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
 import {
@@ -115,6 +123,12 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [currentTimestamp, setCurrentTimestamp] = useState(
+    () => Date.now() / 1000
+  )
+  const [managingSubscriptionId, setManagingSubscriptionId] = useState<
+    number | null
+  >(null)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -151,7 +165,17 @@ export function SubscriptionPlansCard({
       }
     } catch {
       // ignore
+    } finally {
+      setCurrentTimestamp(Date.now() / 1000)
     }
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentTimestamp(Date.now() / 1000)
+    }, 60_000)
+
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -188,6 +212,33 @@ export function SubscriptionPlansCard({
     } catch {
       toast.error(t('Request failed'))
       setBillingPreference(previous)
+    }
+  }
+
+  const handleManageStripeSubscription = async (subscriptionId: number) => {
+    setManagingSubscriptionId(subscriptionId)
+    const portalWindow = window.open('', '_blank')
+    if (portalWindow) portalWindow.opener = null
+
+    try {
+      const res = await createStripePortalSession(subscriptionId)
+      const portalUrl = res.data?.portal_url
+      if (!res.success || !portalUrl) {
+        portalWindow?.close()
+        toast.error(res.message || t('Unable to open subscription management'))
+        return
+      }
+
+      if (portalWindow) {
+        portalWindow.location.href = portalUrl
+      } else {
+        window.location.assign(portalUrl)
+      }
+    } catch {
+      portalWindow?.close()
+      toast.error(t('Unable to open subscription management'))
+    } finally {
+      setManagingSubscriptionId(null)
     }
   }
 
@@ -236,8 +287,7 @@ export function SubscriptionPlansCard({
   const getRemainingDays = (sub: UserSubscriptionRecord) => {
     const endTime = sub?.subscription?.end_time || 0
     if (!endTime) return 0
-    const now = Date.now() / 1000
-    return Math.max(0, Math.ceil((endTime - now) / 86400))
+    return Math.max(0, Math.ceil((endTime - currentTimestamp) / 86400))
   }
 
   const getUsagePercent = (sub: UserSubscriptionRecord) => {
@@ -410,6 +460,7 @@ export function SubscriptionPlansCard({
               <div className='max-h-64 space-y-3 overflow-y-auto pr-1'>
                 {allSubscriptions.map((sub) => {
                   const subscription = sub.subscription
+                  const providerSubscription = sub.provider_subscription
                   const totalAmount = Number(subscription?.amount_total || 0)
                   const usedAmount = Number(subscription?.amount_used || 0)
                   const remainAmount =
@@ -417,15 +468,31 @@ export function SubscriptionPlansCard({
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
                   const plan = planMap.get(subscription?.plan_id)
-                  const hasReset = plan ? planHasReset(plan) : (subscription?.next_reset_time ?? 0) > 0
+                  const hasReset = plan
+                    ? planHasReset(plan)
+                    : (subscription?.next_reset_time ?? 0) > 0
                   const estimatedTotal = plan ? calcEstimatedTotal(plan) : null
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
-                  const now = Date.now() / 1000
-                  const isExpired = (subscription?.end_time || 0) < now
+                  const isExpired =
+                    (subscription?.end_time || 0) < currentTimestamp
                   const isCancelled = subscription?.status === 'cancelled'
                   const isActive =
                     subscription?.status === 'active' && !isExpired
+                  const isStripeRecurring =
+                    providerSubscription?.provider === 'stripe'
+                  const isAutoRenewing =
+                    isStripeRecurring &&
+                    !providerSubscription.cancel_at_period_end &&
+                    ['active', 'trialing'].includes(providerSubscription.status)
+                  const providerPeriodEnd =
+                    providerSubscription?.current_period_end ||
+                    subscription?.end_time ||
+                    0
+                  const canManageStripe =
+                    isStripeRecurring &&
+                    providerSubscription.management_available
+                  const isManaging = managingSubscriptionId === subscription?.id
 
                   return (
                     <div
@@ -477,6 +544,67 @@ export function SubscriptionPlansCard({
                           (subscription?.end_time || 0) * 1000
                         ).toLocaleString()}
                       </div>
+                      {isStripeRecurring && (
+                        <div className='mt-2 flex flex-wrap items-center justify-between gap-2 rounded-md border px-2.5 py-2'>
+                          <div className='min-w-0 space-y-0.5'>
+                            <div className='flex flex-wrap items-center gap-1.5'>
+                              <StatusBadge
+                                label={
+                                  providerSubscription.cancel_at_period_end
+                                    ? t('Cancellation scheduled')
+                                    : isAutoRenewing
+                                      ? t('Auto-renewing')
+                                      : t('Automatic renewal inactive')
+                                }
+                                variant={isAutoRenewing ? 'info' : 'neutral'}
+                                copyable={false}
+                              />
+                              <span className='text-muted-foreground'>
+                                Stripe · {providerSubscription.status}
+                              </span>
+                            </div>
+                            {providerPeriodEnd > 0 && (
+                              <p className='text-muted-foreground'>
+                                {providerSubscription.cancel_at_period_end
+                                  ? t('Access ends on {{date}}', {
+                                      date: new Date(
+                                        providerPeriodEnd * 1000
+                                      ).toLocaleString(),
+                                    })
+                                  : isAutoRenewing
+                                    ? t('Next charge on {{date}}', {
+                                        date: new Date(
+                                          providerPeriodEnd * 1000
+                                        ).toLocaleString(),
+                                      })
+                                    : t('Current period ends on {{date}}', {
+                                        date: new Date(
+                                          providerPeriodEnd * 1000
+                                        ).toLocaleString(),
+                                      })}
+                              </p>
+                            )}
+                          </div>
+                          {canManageStripe && (
+                            <Button
+                              variant='outline'
+                              size='sm'
+                              className='h-7 shrink-0 px-2 text-xs'
+                              disabled={managingSubscriptionId !== null}
+                              onClick={() =>
+                                handleManageStripeSubscription(subscription.id)
+                              }
+                            >
+                              {isManaging ? (
+                                <Loader2 className='mr-1 h-3 w-3 animate-spin' />
+                              ) : (
+                                <ExternalLink className='mr-1 h-3 w-3' />
+                              )}
+                              {t('Manage Stripe subscription')}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                       {isActive && (subscription?.next_reset_time ?? 0) > 0 && (
                         <div className='text-muted-foreground mt-1'>
                           {t('Next reset')}:{' '}
@@ -553,12 +681,12 @@ export function SubscriptionPlansCard({
                   ? `${t('Quota Reset')}: ${formatResetPeriod(plan, t)}`
                   : null,
                 hasResetPlan
-                  ? (totalAmount > 0
-                      ? `${t('Period Quota')}: ${formatQuota(totalAmount)}`
-                      : `${t('Period Quota')}: ${t('Unlimited')}`)
-                  : (totalAmount > 0
-                      ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
-                      : `${t('Total Quota')}: ${t('Unlimited')}`),
+                  ? totalAmount > 0
+                    ? `${t('Period Quota')}: ${formatQuota(totalAmount)}`
+                    : `${t('Period Quota')}: ${t('Unlimited')}`
+                  : totalAmount > 0
+                    ? `${t('Total Quota')}: ${formatQuota(totalAmount)}`
+                    : `${t('Total Quota')}: ${t('Unlimited')}`,
                 hasResetPlan && estTotal
                   ? `${t('Total Quota')}: ≈ ${formatQuota(estTotal)}`
                   : null,
