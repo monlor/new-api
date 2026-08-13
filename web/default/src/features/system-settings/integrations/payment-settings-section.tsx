@@ -137,7 +137,7 @@ const paymentSchema = z.object({
   StripeWebhookSecret: z.string(),
   StripePriceId: z.string(),
   StripeUnitPrice: z.coerce.number().min(0),
-  StripeMinTopUp: z.coerce.number().min(0),
+  StripeMinTopUp: z.coerce.number().int().min(0),
   StripePromotionCodesEnabled: z.boolean(),
   CreemApiKey: z.string(),
   CreemWebhookSecret: z.string(),
@@ -1423,7 +1423,7 @@ export function PaymentSettingsSection({
                     <FormControl>
                       <Input
                         type='number'
-                        step='0.01'
+                        step='1'
                         min={0}
                         {...safeNumberFieldProps(field)}
                       />

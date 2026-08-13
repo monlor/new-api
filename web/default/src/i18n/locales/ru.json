@@ -3875,6 +3875,7 @@
     "Streaming": "Стриминг",
     "String Replace": "Замена строки",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe использует целые единицы USD. Ваш платеж округлен в большую сторону до {{amount}} (USD ${{usdAmount}}).",
     "Stripe API key (leave blank unless updating)": "Ключ API Stripe (оставьте пустым, если не обновляете)",
     "Stripe Dashboard": "Панель управления Stripe",
     "Stripe Gateway": "Шлюз Stripe",

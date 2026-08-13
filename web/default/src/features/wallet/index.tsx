@@ -40,6 +40,7 @@ import {
 } from './hooks'
 import {
   getMinTopupAmount,
+  isBelowPaymentMethodMinTopup,
   isWaffoPancakePayment,
 } from './lib'
 import type {
@@ -138,14 +139,14 @@ export function Wallet(props: WalletProps) {
 
   // Handle payment method selection
   const handlePaymentMethodSelect = async (method: PaymentMethod) => {
+    if (isBelowPaymentMethodMinTopup(topupAmount, method, topupInfo)) {
+      return
+    }
+
     setSelectedPaymentMethod(method)
     setPaymentLoading(method.type)
 
     try {
-      const minTopup = getMinTopupAmount(topupInfo)
-      if (topupAmount < minTopup) {
-        return
-      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -155,6 +156,15 @@ export function Wallet(props: WalletProps) {
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
     if (!selectedPaymentMethod) return
+    if (
+      isBelowPaymentMethodMinTopup(
+        topupAmount,
+        selectedPaymentMethod,
+        topupInfo
+      )
+    ) {
+      return
+    }
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
     const success = isPancake

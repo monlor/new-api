@@ -3875,6 +3875,7 @@
     "Streaming": "Truyền liên tục",
     "String Replace": "Thay thế chuỗi",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe sử dụng đơn vị USD nguyên. Khoản thanh toán của bạn được làm tròn lên thành {{amount}} (USD ${{usdAmount}}).",
     "Stripe API key (leave blank unless updating)": "Khóa API Stripe (để trống trừ khi cập nhật)",
     "Stripe Dashboard": "Bảng điều khiển Stripe",
     "Stripe Gateway": "Cổng thanh toán Stripe",

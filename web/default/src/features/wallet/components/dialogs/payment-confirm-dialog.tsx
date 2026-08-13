@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +30,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { getPaymentIcon } from '../../lib'
+import {
+  getPaymentIcon,
+  getStripeTopupAmountInUSD,
+  isStripePayment,
+  normalizePaymentAmount,
+} from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -53,9 +59,26 @@ export function PaymentConfirmDialog({
   discountRate = DEFAULT_DISCOUNT_RATE,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
+  const currency = useSystemConfigStore((state) => state.config.currency)
+  const isStripe = isStripePayment(paymentMethod?.type ?? '')
+  const stripeTopupAmountUSD = getStripeTopupAmountInUSD(
+    topupAmount,
+    currency
+  )
+  const paymentAmount = normalizePaymentAmount(
+    isStripe ? stripeTopupAmountUSD : topupAmount,
+    paymentMethod?.type ?? ''
+  )
   const hasDiscount = discountRate > 0 && discountRate < 1
-  const discountedAmount = hasDiscount ? topupAmount * discountRate : topupAmount
+  const discountedAmount = hasDiscount
+    ? topupAmount * discountRate
+    : topupAmount
   const savedAmount = hasDiscount ? topupAmount - discountedAmount : 0
+  const amountDue = isStripe ? paymentAmount : discountedAmount
+  const stripeAmountRoundedUp =
+    isStripe &&
+    paymentAmount - stripeTopupAmountUSD >
+      Number.EPSILON * Math.max(1, Math.abs(stripeTopupAmountUSD))
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -76,9 +99,9 @@ export function PaymentConfirmDialog({
             </span>
             <div className='flex items-baseline gap-2'>
               <span className='text-2xl font-semibold'>
-                {formatBillingCurrencyFromUSD(discountedAmount)}
+                {formatBillingCurrencyFromUSD(amountDue)}
               </span>
-              {hasDiscount && (
+              {hasDiscount && !isStripe && (
                 <span className='text-muted-foreground text-sm line-through'>
                   {formatBillingCurrencyFromUSD(topupAmount)}
                 </span>
@@ -86,7 +109,7 @@ export function PaymentConfirmDialog({
             </div>
           </div>
 
-          {hasDiscount && (
+          {hasDiscount && !isStripe && (
             <div className='bg-muted/50 rounded-lg p-3'>
               <div className='flex items-center justify-between text-sm'>
                 <span className='text-muted-foreground'>{t('You save')}</span>
@@ -94,6 +117,20 @@ export function PaymentConfirmDialog({
                   {formatBillingCurrencyFromUSD(savedAmount)}
                 </span>
               </div>
+            </div>
+          )}
+
+          {stripeAmountRoundedUp && (
+            <div className='bg-muted/50 rounded-lg p-3 text-sm'>
+              <span className='text-muted-foreground'>
+                {t(
+                  'Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).',
+                  {
+                    amount: formatBillingCurrencyFromUSD(paymentAmount),
+                    usdAmount: paymentAmount,
+                  }
+                )}
+              </span>
             </div>
           )}
 

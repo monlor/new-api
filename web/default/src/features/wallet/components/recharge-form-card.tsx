@@ -33,7 +33,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
-import { getDiscountLabel, getPaymentIcon, getMinTopupAmount } from '../lib'
+import {
+  getDiscountLabel,
+  getPaymentIcon,
+  getMinTopupAmount,
+  getPaymentMethodMinTopup,
+} from '../lib'
 import { classifyPaymentMethod } from '../lib/payment-methods'
 import type {
   PaymentMethod,
@@ -145,7 +150,7 @@ export function RechargeFormCard({
     const numValue = parseFloat(value)
     // Allow 0 to propagate so the parent doesn't stay stale when the field is cleared.
     // Negative values are ignored; NaN (empty string) leaves parent unchanged.
-    if (!isNaN(numValue) && numValue >= 0) {
+    if (Number.isFinite(numValue) && numValue >= 0) {
       onTopupAmountChange(displayToUsd(numValue))
     }
   }
@@ -168,7 +173,7 @@ export function RechargeFormCard({
   const redemptionEnabled = topupInfo?.enable_redemption !== false
   const paymentMethodItems: PaymentMethodSelectorItem[] = [
     ...(topupInfo?.pay_methods || []).map((method, index) => {
-      const effectiveMin = Math.max(method.min_topup || 0, minTopup)
+      const effectiveMin = getPaymentMethodMinTopup(method, topupInfo)
       const belowMin = effectiveMin > topupAmount
       const isStripe = method.type.toLowerCase() === 'stripe'
 
@@ -185,7 +190,7 @@ export function RechargeFormCard({
         disabled: belowMin || !!paymentLoading,
         disabledReason: belowMin
           ? t('Minimum topup amount: {{amount}}', {
-              amount: effectiveMin,
+              amount: formatCurrencyFromUSD(effectiveMin),
             })
           : undefined,
         onSelect: () => onPaymentMethodSelect(method),

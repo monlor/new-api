@@ -3875,6 +3875,7 @@
     "Streaming": "ストリーミング",
     "String Replace": "文字列置換",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe は米ドルの整数単位を使用します。お支払いは {{amount}}（USD ${{usdAmount}}）に切り上げられます。",
     "Stripe API key (leave blank unless updating)": "Stripe APIキー（更新しない場合は空白のままにしてください）",
     "Stripe Dashboard": "Stripeダッシュボード",
     "Stripe Gateway": "Stripeゲートウェイ",

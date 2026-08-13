@@ -3875,6 +3875,7 @@
     "Streaming": "流式输出",
     "String Replace": "字符串替换",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe 仅支持整美元单位，您的付款已向上补足至 {{amount}}（USD ${{usdAmount}}）。",
     "Stripe API key (leave blank unless updating)": "Stripe API 密钥（除非更新，否则留空）",
     "Stripe Dashboard": "Stripe 控制面板",
     "Stripe Gateway": "Stripe 网关",

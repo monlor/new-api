@@ -71,9 +71,7 @@ function parsePaymentMethods(
         type,
         color: typeof item.color === 'string' ? item.color : undefined,
         min_topup:
-          type === 'stripe' && normalizedMinTopup <= 0
-            ? stripeMinTopup
-            : normalizedMinTopup,
+          type === 'stripe' ? stripeMinTopup : normalizedMinTopup,
       }
     })
     .filter((item) => item.name && item.type && item.type !== 'waffo')

@@ -30,6 +30,7 @@ import {
 import {
   isStripePayment,
   isWaffoPancakePayment,
+  normalizePaymentAmount,
   submitPaymentForm,
 } from '../lib'
 
@@ -82,7 +83,7 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
-        const amount = Math.floor(topupAmount)
+        const amount = normalizePaymentAmount(topupAmount, paymentType)
 
         const response = isStripe
           ? await requestStripePayment({

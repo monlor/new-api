@@ -56,6 +56,8 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 新增 `PaymentCurrency` 选项，并在 topup info API 暴露
 - 个人资料 / 仪表盘余额按支付网关货币显示
 - 充值表单支持按本地货币输入
+- Stripe 固定 Price 充值在本地币种换算出非整美元时，确认界面会明确显示向上补足后的实际应付金额，并以同一金额创建 Checkout；不再静默向下截断导致少收款
+- Stripe 余额充值复用 `StripeMinTopUp` 作为唯一最低额度配置：topup info、默认钱包灰显和两个 Stripe 接口使用相同门槛；令牌显示模式会同步换算上下限与 Checkout 数量，避免界面和服务端金额单位不一致
 - 统一货币显示：`formatCurrencyFromUSD` / `formatQuotaWithCurrency`（不再用 wallet 内部 `formatPaymentCurrency`）
 - 钱包充值与订阅购买复用统一支付方式选择器，并按余额、银行卡、Epay、普通方式、虚拟货币稳定排序
 - 修复：货币符号、转账显示货币、低于全局下限禁用按钮、zh-TW 排除简中 CNY 覆盖

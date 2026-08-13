@@ -22,7 +22,11 @@ import {
   DEFAULT_PAYMENT_TYPE,
   DEFAULT_MIN_TOPUP,
 } from '../constants'
-import type { PresetAmount, TopupInfo } from '../types'
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  type CurrencyConfig,
+} from '@/stores/system-config-store'
+import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 
 // ============================================================================
 // Payment Processing Functions
@@ -73,6 +77,79 @@ export function submitPaymentForm(
  */
 export function isStripePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.STRIPE
+}
+
+/**
+ * Get the applicable minimum for a selected payment method.
+ *
+ * Stripe's configured minimum is authoritative and intentionally does not
+ * inherit a legacy per-method or general online-topup minimum. Other methods
+ * preserve the existing behavior of enforcing the higher applicable minimum.
+ */
+export function getPaymentMethodMinTopup(
+  method: Pick<PaymentMethod, 'type' | 'min_topup'>,
+  topupInfo: TopupInfo | null
+): number {
+  if (isStripePayment(method.type.toLowerCase())) {
+    return topupInfo?.stripe_min_topup ?? 0
+  }
+
+  return Math.max(method.min_topup || 0, getMinTopupAmount(topupInfo))
+}
+
+/**
+ * Whether the entered amount is below the selected method's payment minimum.
+ */
+export function isBelowPaymentMethodMinTopup(
+  topupAmount: number,
+  method: Pick<PaymentMethod, 'type' | 'min_topup'>,
+  topupInfo: TopupInfo | null
+): boolean {
+  return topupAmount < getPaymentMethodMinTopup(method, topupInfo)
+}
+
+/**
+ * Normalize a topup amount for the payment provider's request contract.
+ *
+ * Stripe Checkout uses a fixed Price with an integer Quantity, so a partial
+ * USD amount must be charged as the next whole USD unit. Other providers keep
+ * their existing integer truncation behavior.
+ */
+export function normalizePaymentAmount(
+  topupAmount: number,
+  paymentType: string
+): number {
+  if (!isStripePayment(paymentType)) {
+    return Math.floor(topupAmount)
+  }
+
+  // Currency conversion can produce a value such as 2.0000000000000004 for
+  // an exact whole-dollar amount. Account for that floating-point noise before
+  // rounding up so it does not become the next USD unit.
+  const precision = Number.EPSILON * Math.max(1, Math.abs(topupAmount))
+  return Math.ceil(topupAmount - precision)
+}
+
+/**
+ * Convert the amount submitted by the wallet to the USD units used by Stripe.
+ *
+ * Token display mode keeps the entered recharge amount as raw quota, while
+ * Stripe Checkout prices are denominated in whole USD units. This mirrors the
+ * server-side conversion before the Checkout quantity is rounded up.
+ */
+export function getStripeTopupAmountInUSD(
+  topupAmount: number,
+  currency: Pick<CurrencyConfig, 'quotaDisplayType' | 'quotaPerUnit'>
+): number {
+  if (currency.quotaDisplayType !== 'TOKENS') {
+    return topupAmount
+  }
+
+  const quotaPerUnit =
+    currency.quotaPerUnit > 0
+      ? currency.quotaPerUnit
+      : DEFAULT_CURRENCY_CONFIG.quotaPerUnit
+  return topupAmount / quotaPerUnit
 }
 
 /**

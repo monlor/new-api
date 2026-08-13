@@ -3875,6 +3875,7 @@
     "Streaming": "Streaming",
     "String Replace": "Remplacement de texte",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe utilise des unités entières en USD. Votre paiement est arrondi au montant supérieur de {{amount}} (USD ${{usdAmount}}).",
     "Stripe API key (leave blank unless updating)": "Clé API Stripe (laisser vide sauf en cas de mise à jour)",
     "Stripe Dashboard": "Tableau de bord Stripe",
     "Stripe Gateway": "Passerelle Stripe",

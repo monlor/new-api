@@ -3875,6 +3875,7 @@
     "Streaming": "Streaming",
     "String Replace": "String Replace",
     "Stripe": "Stripe",
+    "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).": "Stripe uses whole USD units. Your payment is rounded up to {{amount}} (USD ${{usdAmount}}).",
     "Stripe API key (leave blank unless updating)": "Stripe API key (leave blank unless updating)",
     "Stripe Dashboard": "Stripe Dashboard",
     "Stripe Gateway": "Stripe Gateway",
