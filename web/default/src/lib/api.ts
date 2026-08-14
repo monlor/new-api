@@ -219,7 +219,7 @@ export async function getStatus() {
 export async function getNotice(): Promise<{
   success: boolean
   message?: string
-  data?: string
+  data?: string | Record<string, string>
 }> {
   const res = await api.get('/api/notice')
   return res.data

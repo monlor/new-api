@@ -20,9 +20,14 @@ import { useEffect, useMemo, useState } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Edit, Trash2, Save } from 'lucide-react'
+import { Check, Plus, Edit, Trash2, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import {
+  ANNOUNCEMENT_LOCALES,
+  type AnnouncementLocale,
+  type AnnouncementTranslations,
+} from '@/lib/announcement-localization'
 import dayjs from '@/lib/dayjs'
 import {
   AlertDialog,
@@ -69,6 +74,7 @@ type Announcement = {
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  translations?: AnnouncementTranslations
 }
 
 type AnnouncementsSectionProps = {
@@ -87,6 +93,22 @@ const announcementSchema = z.object({
     .string()
     .max(100, 'Extra must be less than 100 characters')
     .optional(),
+  translations: z.record(
+    z.string(),
+    z.object({
+      // Selecting a language registers its fields before any content is
+      // entered. Keep that draft state valid; empty translations are removed
+      // when the announcement is submitted.
+      content: z
+        .string()
+        .max(500, 'Content must be less than 500 characters')
+        .optional(),
+      extra: z
+        .string()
+        .max(100, 'Extra must be less than 100 characters')
+        .optional(),
+    })
+  ),
 })
 
 type AnnouncementFormValues = z.infer<typeof announcementSchema>
@@ -141,6 +163,7 @@ export function AnnouncementsSection({
   const [editingAnnouncement, setEditingAnnouncement] =
     useState<Announcement | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<'single' | 'batch'>('single')
+  const [editingLocale, setEditingLocale] = useState<AnnouncementLocale>('en')
 
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
@@ -149,6 +172,7 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      translations: {},
     },
   })
 
@@ -192,7 +216,9 @@ export function AnnouncementsSection({
       publishDate: new Date().toISOString(),
       type: 'default',
       extra: '',
+      translations: {},
     })
+    setEditingLocale('en')
     setShowDialog(true)
   }
 
@@ -203,7 +229,9 @@ export function AnnouncementsSection({
       publishDate: announcement.publishDate,
       type: announcement.type,
       extra: announcement.extra || '',
+      translations: announcement.translations || {},
     })
+    setEditingLocale('en')
     setShowDialog(true)
   }
 
@@ -246,16 +274,27 @@ export function AnnouncementsSection({
   }
 
   const handleSubmitForm = (values: AnnouncementFormValues) => {
+    const translations = Object.fromEntries(
+      Object.entries(values.translations).filter(([, translation]) =>
+        translation.content?.trim()
+      )
+    ) as AnnouncementTranslations
+    const normalizedValues = {
+      ...values,
+      translations: Object.keys(translations).length ? translations : undefined,
+    }
     if (editingAnnouncement) {
       setAnnouncements((prev) =>
         prev.map((item) =>
-          item.id === editingAnnouncement.id ? { ...item, ...values } : item
+          item.id === editingAnnouncement.id
+            ? { ...item, ...normalizedValues }
+            : item
         )
       )
       toast.success(t('Announcement updated. Click "Save Settings" to apply.'))
     } else {
       const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
-      setAnnouncements((prev) => [...prev, { id: newId, ...values }])
+      setAnnouncements((prev) => [...prev, { id: newId, ...normalizedValues }])
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
     setHasChanges(true)
@@ -305,6 +344,21 @@ export function AnnouncementsSection({
     if (diffHours < 24) return `${diffHours}h ago`
     return `${diffDays}d ago`
   }
+
+  const translations = form.watch('translations')
+  const englishContent = form.watch('content')
+  const contentFieldName =
+    editingLocale === 'en'
+      ? 'content'
+      : (`translations.${editingLocale}.content` as const)
+  const extraFieldName =
+    editingLocale === 'en'
+      ? 'extra'
+      : (`translations.${editingLocale}.extra` as const)
+  const isLocaleConfigured = (locale: AnnouncementLocale) =>
+    locale === 'en'
+      ? Boolean(englishContent?.trim())
+      : Boolean(translations?.[locale]?.content?.trim())
 
   return (
     <SettingsSection title={t('Announcements')}>
@@ -476,28 +530,71 @@ export function AnnouncementsSection({
             onSubmit={form.handleSubmit(handleSubmitForm)}
             className='space-y-4'
           >
-            <FormField
-              control={form.control}
-              name='content'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Content')}</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder={t(
-                        'Enter announcement content (supports Markdown/HTML)'
+            <div className='space-y-4'>
+              <div className='space-y-1'>
+                <FormLabel>{t('Select Language')}</FormLabel>
+                <Select
+                  value={editingLocale}
+                  onValueChange={(value) =>
+                    setEditingLocale(value as AnnouncementLocale)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    {ANNOUNCEMENT_LOCALES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <div className='flex items-center gap-2'>
+                          <span>
+                            {option.label} ({option.value})
+                          </span>
+                          {isLocaleConfigured(option.value) && (
+                            <span
+                              className='text-success inline-flex items-center'
+                              title={t('Enabled')}
+                            >
+                              <Check aria-hidden='true' className='h-4 w-4' />
+                              <span className='sr-only'>{t('Enabled')}</span>
+                            </span>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  {editingLocale === 'en'
+                    ? t('English is the default announcement and is required.')
+                    : t(
+                        'When this language is empty, users see the English announcement.'
                       )}
-                      rows={4}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('Maximum 500 characters. Supports Markdown and HTML.')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                </FormDescription>
+              </div>
+              <FormField
+                control={form.control}
+                name={contentFieldName}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Content')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder={t(
+                          'Enter announcement content (supports Markdown/HTML)'
+                        )}
+                        rows={4}
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Maximum 500 characters. Supports Markdown and HTML.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name='publishDate'
@@ -573,7 +670,7 @@ export function AnnouncementsSection({
             />
             <FormField
               control={form.control}
-              name='extra'
+              name={extraFieldName}
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Extra Notes (Optional)')}</FormLabel>
@@ -581,6 +678,7 @@ export function AnnouncementsSection({
                     <Input
                       placeholder={t('Additional information')}
                       {...field}
+                      value={field.value ?? ''}
                     />
                   </FormControl>
                   <FormDescription>

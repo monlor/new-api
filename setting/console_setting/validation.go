@@ -1,13 +1,14 @@
 package console_setting
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 var (
@@ -24,7 +25,7 @@ var (
 
 func parseJSONArray(jsonStr string, typeName string) ([]map[string]interface{}, error) {
 	var list []map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &list); err != nil {
+	if err := common.UnmarshalJsonStr(jsonStr, &list); err != nil {
 		return nil, fmt.Errorf("%s格式错误：%s", typeName, err.Error())
 	}
 	return list, nil
@@ -55,7 +56,9 @@ func getJSONList(jsonStr string) []map[string]interface{} {
 		return []map[string]interface{}{}
 	}
 	var list []map[string]interface{}
-	json.Unmarshal([]byte(jsonStr), &list)
+	if err := common.UnmarshalJsonStr(jsonStr, &list); err != nil {
+		return []map[string]interface{}{}
+	}
 	return list
 }
 
@@ -178,6 +181,44 @@ func validateAnnouncements(announcementsStr string) error {
 		if extra, exists := ann["extra"]; exists {
 			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
 				return fmt.Errorf("第%d个公告的说明长度不能超过200字符", i+1)
+			}
+		}
+		if translations, exists := ann["translations"]; exists {
+			if err := validateAnnouncementTranslations(translations, i+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateAnnouncementTranslations validates the optional per-language content.
+// The top-level content and extra fields remain the English fallback so existing
+// announcement records require no migration.
+func validateAnnouncementTranslations(value interface{}, index int) error {
+	translations, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("第%d个公告的多语言内容格式不正确", index)
+	}
+	for language, translationValue := range translations {
+		translation, ok := translationValue.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("第%d个公告的%s翻译格式不正确", index, language)
+		}
+		content, ok := translation["content"].(string)
+		if !ok || content == "" {
+			return fmt.Errorf("第%d个公告的%s翻译缺少内容字段", index, language)
+		}
+		if len(content) > 500 {
+			return fmt.Errorf("第%d个公告的%s翻译内容长度不能超过500字符", index, language)
+		}
+		if extra, exists := translation["extra"]; exists {
+			extraStr, ok := extra.(string)
+			if !ok {
+				return fmt.Errorf("第%d个公告的%s翻译说明格式不正确", index, language)
+			}
+			if len(extraStr) > 200 {
+				return fmt.Errorf("第%d个公告的%s翻译说明长度不能超过200字符", index, language)
 			}
 		}
 	}

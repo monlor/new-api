@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import * as z from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import {
+  ANNOUNCEMENT_LOCALES,
+  type AnnouncementLocale,
+} from '@/lib/announcement-localization'
 import {
   Form,
   FormControl,
@@ -29,6 +33,13 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
@@ -36,7 +47,20 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const noticeSchema = z.object({
-  Notice: z.string().optional(),
+  translations: z
+    .record(z.string(), z.string())
+    .superRefine((translations, ctx) => {
+      const hasLocalizedContent = Object.values(translations).some((content) =>
+        content.trim()
+      )
+      if (hasLocalizedContent && !translations.en?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['en'],
+          message: 'English content is required',
+        })
+      }
+    }),
 })
 
 type NoticeFormValues = z.infer<typeof noticeSchema>
@@ -45,28 +69,47 @@ type NoticeSectionProps = {
   defaultValue: string
 }
 
+function parseNotice(value: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed).filter(
+          ([, content]) => typeof content === 'string'
+        )
+      ) as Record<string, string>
+    }
+  } catch {
+    // Plain-string notices are legacy English notices.
+  }
+  return { en: value }
+}
+
 export function NoticeSection({ defaultValue }: NoticeSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
+  const [locale, setLocale] = useState<AnnouncementLocale>('en')
   const form = useForm<NoticeFormValues>({
     resolver: zodResolver(noticeSchema),
     defaultValues: {
-      Notice: defaultValue ?? '',
+      translations: parseNotice(defaultValue ?? ''),
     },
   })
 
   useEffect(() => {
-    form.reset({ Notice: defaultValue ?? '' })
+    form.reset({ translations: parseNotice(defaultValue ?? '') })
   }, [defaultValue, form])
 
   const onSubmit = async (values: NoticeFormValues) => {
-    const normalized = values.Notice ?? ''
-    if (normalized === (defaultValue ?? '')) {
-      return
-    }
+    if (!form.formState.isDirty) return
+    const normalized = Object.fromEntries(
+      Object.entries(values.translations).filter(([, content]) =>
+        content.trim()
+      )
+    )
     await updateOption.mutateAsync({
       key: 'Notice',
-      value: normalized,
+      value: JSON.stringify(normalized),
     })
   }
 
@@ -81,10 +124,29 @@ export function NoticeSection({ defaultValue }: NoticeSectionProps) {
           />
           <FormField
             control={form.control}
-            name='Notice'
+            name={`translations.${locale}`}
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Announcement content')}</FormLabel>
+                <Select
+                  value={locale}
+                  onValueChange={(value) =>
+                    setLocale(value as AnnouncementLocale)
+                  }
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent alignItemWithTrigger={false}>
+                    {ANNOUNCEMENT_LOCALES.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormControl>
                   <Textarea
                     rows={8}
@@ -92,8 +154,16 @@ export function NoticeSection({ defaultValue }: NoticeSectionProps) {
                       'Planned maintenance on Friday at 22:00 UTC...'
                     )}
                     {...field}
+                    value={field.value ?? ''}
                   />
                 </FormControl>
+                <p className='text-muted-foreground text-sm'>
+                  {locale === 'en'
+                    ? t('English is the default notice and is required.')
+                    : t(
+                        'When this language is empty, users see the English notice.'
+                      )}
+                </p>
                 <FormMessage />
               </FormItem>
             )}

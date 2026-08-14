@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { TimeGranularity } from '@/lib/time'
+import type { AnnouncementTranslations } from '@/lib/announcement-localization'
 
 // ============================================================================
 // Quota & Usage Data Types
@@ -122,6 +123,7 @@ export interface AnnouncementItem {
   publishDate?: string
   type?: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  translations?: AnnouncementTranslations
 }
 
 // ============================================================================

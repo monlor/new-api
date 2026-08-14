@@ -599,9 +599,16 @@ export function OverviewDashboard() {
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length
   const setupGuideExpanded = manualSetupGuideExpanded ?? !setupComplete
-  const showLeftContentPanels =
-    isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
-  const showContentPanels = showLeftContentPanels || showUptimePanel
+  const showSecondContentRow =
+    showAnnouncementsPanel || showApiInfoPanel || showFAQPanel
+  const showThirdContentRow = showUptimePanel || isAdmin
+  const secondContentPanelCount = [
+    showAnnouncementsPanel,
+    showApiInfoPanel,
+    showFAQPanel,
+  ].filter(Boolean).length
+  const thirdContentPanelCount = [showUptimePanel, isAdmin].filter(Boolean)
+    .length
 
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
@@ -743,49 +750,53 @@ export function OverviewDashboard() {
 
       <SummaryCards />
 
-      {showContentPanels && (
-        <CardStaggerContainer
-          className={cn(
-            'grid grid-cols-1 gap-4',
-            showLeftContentPanels &&
-              showUptimePanel &&
-              'xl:grid-cols-[minmax(0,1fr)_22rem]'
-          )}
-        >
-          {showLeftContentPanels && (
+      {(showSecondContentRow || showThirdContentRow) && (
+        <CardStaggerContainer className='grid gap-4'>
+          {showSecondContentRow && (
             <div
               className={cn(
-                'grid min-w-0 grid-cols-1 gap-4',
-                (showApiInfoPanel || showAnnouncementsPanel || showFAQPanel) &&
-                  'lg:grid-cols-2'
+                'grid grid-cols-1 items-stretch gap-4',
+                secondContentPanelCount === 2 && 'lg:grid-cols-2',
+                secondContentPanelCount === 3 && 'lg:grid-cols-3'
               )}
             >
-              {isAdmin && (
-                <CardStaggerItem className='lg:col-span-2'>
-                  <PerformanceHealthPanel />
-                </CardStaggerItem>
-              )}
-              {showApiInfoPanel && (
-                <CardStaggerItem>
-                  <ApiInfoPanel />
-                </CardStaggerItem>
-              )}
               {showAnnouncementsPanel && (
-                <CardStaggerItem>
+                <CardStaggerItem className='h-[25rem]'>
                   <AnnouncementsPanel />
                 </CardStaggerItem>
               )}
+              {showApiInfoPanel && (
+                <CardStaggerItem className='h-[25rem]'>
+                  <ApiInfoPanel />
+                </CardStaggerItem>
+              )}
               {showFAQPanel && (
-                <CardStaggerItem>
+                <CardStaggerItem className='h-[25rem]'>
                   <FAQPanel />
                 </CardStaggerItem>
               )}
             </div>
           )}
-          {showUptimePanel && (
-            <CardStaggerItem>
-              <UptimePanel />
-            </CardStaggerItem>
+
+          {showThirdContentRow && (
+            <div
+              className={cn(
+                'grid grid-cols-1 items-stretch gap-4',
+                thirdContentPanelCount === 2 &&
+                  'lg:grid-cols-[22rem_minmax(0,1fr)]'
+              )}
+            >
+              {showUptimePanel && (
+                <CardStaggerItem className='h-[25rem]'>
+                  <UptimePanel />
+                </CardStaggerItem>
+              )}
+              {isAdmin && (
+                <CardStaggerItem className='h-[25rem]'>
+                  <PerformanceHealthPanel />
+                </CardStaggerItem>
+              )}
+            </div>
           )}
         </CardStaggerContainer>
       )}

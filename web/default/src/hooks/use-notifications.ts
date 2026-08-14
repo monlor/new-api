@@ -18,7 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { useNotificationStore } from '@/stores/notification-store'
+import {
+  resolveAnnouncementContent,
+  resolveNoticeContent,
+} from '@/lib/announcement-localization'
 import { getNotice } from '@/lib/api'
 import { useStatus } from '@/hooks/use-status'
 
@@ -62,6 +67,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
  * Provides unread counts and read status management
  */
 export function useNotifications() {
+  const { i18n } = useTranslation()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
@@ -81,10 +87,30 @@ export function useNotifications() {
   // Fetch Announcements from status
   const { status, loading: statusLoading } = useStatus()
   const announcementsEnabled = status?.announcements_enabled ?? false
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const announcements: Record<string, unknown>[] = announcementsEnabled
-    ? ((status?.announcements || []) as Record<string, unknown>[]).slice(0, 20)
-    : []
+  const sourceAnnouncements: Record<string, unknown>[] = useMemo(
+    () =>
+      announcementsEnabled
+        ? ((status?.announcements || []) as Record<string, unknown>[]).slice(
+            0,
+            20
+          )
+        : [],
+    [announcementsEnabled, status?.announcements]
+  )
+  const announcements: Record<string, unknown>[] = useMemo(
+    () =>
+      sourceAnnouncements.map((item) =>
+        resolveAnnouncementContent(
+          item as { content: string; extra?: string },
+          i18n.language
+        )
+      ),
+    [i18n.language, sourceAnnouncements]
+  )
+  const announcementKeys = useMemo(
+    () => sourceAnnouncements.map(getAnnouncementKey),
+    [sourceAnnouncements]
+  )
 
   // Notification store
   const {
@@ -96,7 +122,7 @@ export function useNotifications() {
 
   // Extract notice content
   const noticeContent = noticeResponse?.success
-    ? (noticeResponse.data || '').trim()
+    ? resolveNoticeContent(noticeResponse.data, i18n.language)
     : ''
 
   // Calculate unread counts
@@ -104,11 +130,8 @@ export function useNotifications() {
     const noticeUnread =
       noticeContent && noticeContent !== lastReadNotice ? 1 : 0
 
-    const announcementsUnread = announcements.filter(
-      (item: Record<string, unknown>) => {
-        const key = getAnnouncementKey(item)
-        return !isAnnouncementRead(key)
-      }
+    const announcementsUnread = announcementKeys.filter(
+      (key) => !isAnnouncementRead(key)
     ).length
 
     return {
@@ -116,14 +139,11 @@ export function useNotifications() {
       announcements: announcementsUnread,
       total: noticeUnread + announcementsUnread,
     }
-  }, [noticeContent, lastReadNotice, announcements, isAnnouncementRead])
+  }, [noticeContent, lastReadNotice, announcementKeys, isAnnouncementRead])
 
   const markAnnouncementsAsRead = () => {
-    if (announcements.length > 0) {
-      const allKeys = announcements.map((item: Record<string, unknown>) =>
-        getAnnouncementKey(item)
-      )
-      markAnnouncementsRead(allKeys)
+    if (announcementKeys.length > 0) {
+      markAnnouncementsRead(announcementKeys)
     }
   }
 

@@ -49,7 +49,7 @@ function PanelHeader(props: {
   )
 
   return (
-    <div className='border-b px-4 py-3 sm:px-5'>
+    <div className='shrink-0 border-b px-4 py-3 sm:px-5'>
       {props.actions != null ? (
         <div className='flex items-start justify-between gap-2'>
           {heading}
@@ -66,17 +66,24 @@ export function PanelWrapper(props: PanelWrapperProps) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
   const height = props.height ?? 'h-64'
+  const fillsContainer = props.className?.split(/\s+/).includes('h-full')
   const frameClassName = cn(
     'overflow-hidden rounded-2xl border bg-card shadow-xs',
+    fillsContainer && 'flex flex-col',
     props.className
+  )
+  const contentClassName = cn(
+    'p-4 sm:p-5',
+    fillsContainer && 'min-h-0 flex-1',
+    props.contentClassName
   )
 
   if (props.loading) {
     return (
       <div className={frameClassName}>
         <PanelHeader title={props.title} description={props.description} />
-        <div className={cn('p-4 sm:p-5', props.contentClassName)}>
-          <Skeleton className={`w-full ${height}`} />
+        <div className={contentClassName}>
+          <Skeleton className={cn('w-full', fillsContainer ? 'h-full' : height)} />
         </div>
       </div>
     )
@@ -89,7 +96,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
         <div
           className={cn(
             'text-muted-foreground flex items-center justify-center px-4 text-sm',
-            height,
+            fillsContainer ? 'min-h-0 flex-1' : height,
             props.contentClassName
           )}
         >
@@ -106,7 +113,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
         description={props.description}
         actions={props.headerActions}
       />
-      <div className={cn('p-4 sm:p-5', props.contentClassName)}>
+      <div className={contentClassName}>
         {props.children}
       </div>
     </div>

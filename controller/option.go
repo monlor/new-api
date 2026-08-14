@@ -117,6 +117,53 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
+func optionValueToString(value any) (string, error) {
+	switch value := value.(type) {
+	case string:
+		return value, nil
+	case bool:
+		return common.Interface2String(value), nil
+	case float64:
+		return common.Interface2String(value), nil
+	case int:
+		return common.Interface2String(value), nil
+	default:
+		jsonBytes, err := common.Marshal(value)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonBytes), nil
+	}
+}
+
+func validateNotice(value string) error {
+	if !strings.HasPrefix(strings.TrimSpace(value), "{") {
+		if len(value) > 500 {
+			return fmt.Errorf("系统公告内容长度不能超过500字符")
+		}
+		return nil
+	}
+
+	var translations map[string]interface{}
+	if err := common.UnmarshalJsonStr(value, &translations); err != nil {
+		return fmt.Errorf("系统公告多语言内容格式不正确")
+	}
+	english, ok := translations["en"].(string)
+	if !ok || english == "" {
+		return fmt.Errorf("系统公告必须包含非空的英文内容")
+	}
+	for language, content := range translations {
+		contentStr, ok := content.(string)
+		if !ok {
+			return fmt.Errorf("系统公告的%s内容格式不正确", language)
+		}
+		if len(contentStr) > 500 {
+			return fmt.Errorf("系统公告的%s内容长度不能超过500字符", language)
+		}
+	}
+	return nil
+}
+
 func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
@@ -127,16 +174,15 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
-	switch option.Value.(type) {
-	case bool:
-		option.Value = common.Interface2String(option.Value.(bool))
-	case float64:
-		option.Value = common.Interface2String(option.Value.(float64))
-	case int:
-		option.Value = common.Interface2String(option.Value.(int))
-	default:
-		option.Value = fmt.Sprintf("%v", option.Value)
+	value, err := optionValueToString(option.Value)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "无效的参数",
+		})
+		return
 	}
+	option.Value = value
 	switch option.Key {
 	case "QuotaForInviter", "QuotaForInvitee":
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
@@ -150,6 +196,15 @@ func UpdateOption(c *gin.Context) {
 		}
 	}
 	switch option.Key {
+	case "Notice":
+		err = validateNotice(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

@@ -22,6 +22,7 @@ import { Gauge, HeartPulse, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
   formatLatency,
@@ -102,7 +103,7 @@ export function PerformanceHealthPanel() {
   const hasData = models.length > 0
 
   return (
-    <section className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
+    <section className='bg-card flex h-full flex-col overflow-hidden rounded-2xl border shadow-xs'>
       <div className='flex items-center gap-2 border-b px-4 py-3 sm:px-5'>
         <HeartPulse
           className='text-muted-foreground/60 size-4 shrink-0'
@@ -114,74 +115,76 @@ export function PerformanceHealthPanel() {
         </span>
       </div>
 
-      <div className='space-y-3 p-4 sm:p-5'>
-        <div className='grid grid-cols-3 gap-2'>
-          <MetricCell
-            icon={HeartPulse}
-            label={t('Success rate')}
-            value={formatUptimePct(summary.successRate)}
-            loading={loading}
-            valueClassName={rateTextClass(summary.successRate)}
-          />
-          <MetricCell
-            icon={Timer}
-            label={t('Average latency')}
-            value={formatLatency(summary.avgLatencyMs)}
-            loading={loading}
-          />
-          <MetricCell
-            icon={Gauge}
-            label={t('Throughput')}
-            value={formatThroughput(summary.avgTps)}
-            loading={loading}
-          />
-        </div>
-
-        {loading ? (
-          <div className='space-y-1'>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className='h-5 w-full rounded' />
-            ))}
+      <ScrollArea className='min-h-0 flex-1'>
+        <div className='space-y-3 p-4 sm:p-5'>
+          <div className='grid grid-cols-3 gap-2'>
+            <MetricCell
+              icon={HeartPulse}
+              label={t('Success rate')}
+              value={formatUptimePct(summary.successRate)}
+              loading={loading}
+              valueClassName={rateTextClass(summary.successRate)}
+            />
+            <MetricCell
+              icon={Timer}
+              label={t('Average latency')}
+              value={formatLatency(summary.avgLatencyMs)}
+              loading={loading}
+            />
+            <MetricCell
+              icon={Gauge}
+              label={t('Throughput')}
+              value={formatThroughput(summary.avgTps)}
+              loading={loading}
+            />
           </div>
-        ) : (
-          hasData && (
-            <div>
-              <span className='text-muted-foreground mb-1 block text-[11px] font-medium'>
-                {t('Top models by traffic')}
-              </span>
-              <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
-                {topModels.map((model) => (
-                  <div
-                    key={model.model_name}
-                    className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
-                  >
-                    <span className='min-w-0 flex-1 truncate font-mono text-[11px]'>
-                      {model.model_name}
-                    </span>
-                    <span className='inline-flex shrink-0 items-center gap-1'>
-                      <span
-                        className={cn(
-                          'size-1.5 rounded-full',
-                          rateDotClass(model.success_rate)
-                        )}
-                        aria-hidden='true'
-                      />
-                      <span
-                        className={cn(
-                          'font-mono text-[11px] font-semibold tabular-nums',
-                          rateTextClass(model.success_rate)
-                        )}
-                      >
-                        {formatUptimePct(model.success_rate)}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
+
+          {loading ? (
+            <div className='space-y-1'>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className='h-5 w-full rounded' />
+              ))}
             </div>
-          )
-        )}
-      </div>
+          ) : (
+            hasData && (
+              <div>
+                <span className='text-muted-foreground mb-1 block text-[11px] font-medium'>
+                  {t('Top models by traffic')}
+                </span>
+                <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
+                  {topModels.map((model) => (
+                    <div
+                      key={model.model_name}
+                      className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
+                    >
+                      <span className='min-w-0 flex-1 truncate font-mono text-[11px]'>
+                        {model.model_name}
+                      </span>
+                      <span className='inline-flex shrink-0 items-center gap-1'>
+                        <span
+                          className={cn(
+                            'size-1.5 rounded-full',
+                            rateDotClass(model.success_rate)
+                          )}
+                          aria-hidden='true'
+                        />
+                        <span
+                          className={cn(
+                            'font-mono text-[11px] font-semibold tabular-nums',
+                            rateTextClass(model.success_rate)
+                          )}
+                        >
+                          {formatUptimePct(model.success_rate)}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </ScrollArea>
     </section>
   )
 }
