@@ -60,7 +60,6 @@ interface PaymentSelection {
   method: PaymentMethod
   amount: number
   quotedMoney?: number
-  currency: string
 }
 
 export function Wallet(props: WalletProps) {
@@ -157,7 +156,6 @@ export function Wallet(props: WalletProps) {
     const selection: PaymentSelection = {
       method,
       amount: topupAmount,
-      currency: topupInfo?.payment_currency || 'CNY',
     }
     setPaymentSelection(undefined)
     setPaymentLoading(method.type)
@@ -351,7 +349,6 @@ export function Wallet(props: WalletProps) {
         topupAmount={paymentSelection?.amount ?? topupAmount}
         paymentMethod={paymentSelection?.method}
         quotedMoney={paymentSelection?.quotedMoney}
-        paymentCurrency={paymentSelection?.currency}
         processing={processing || pancakeProcessing}
         discountRate={getDiscountRate()}
       />

@@ -39,7 +39,8 @@ For commercial licensing, please contact support@quantumnous.com
  *
  * - `formatCurrencyFromUSD()`: Use for quota/balance display (stored as USD, converted for display)
  * - `formatBillingCurrencyFromUSD()`: Use for billing/pricing displays (never shows tokens)
- * - `formatLocalCurrencyAmount()`: Use for payment amounts already in local currency
+ * - `formatBillingCurrencyFromCNY()`: Use for CNY payment quotes (converted to display currency)
+ * - `formatLocalCurrencyAmount()`: Use for amounts already in the target display currency
  * - `formatQuotaWithCurrency()`: Use for raw quota values (converts to USD first)
  *
  * ## Example Scenario
@@ -54,7 +55,7 @@ For commercial licensing, please contact support@quantumnous.com
  * 1. Recharge option: 10 USD
  *    - Display: formatCurrencyFromUSD(10) → "¥70"
  * 2. Payment amount: 10 × 5 = 50 (already in CNY)
- *    - Display: formatLocalCurrencyAmount(50) → "¥50"
+ *    - Display: formatBillingCurrencyFromCNY(50) → "¥50"
  * 3. User receives: 10 USD credit
  *    - Balance display: formatCurrencyFromUSD(10) → "¥70"
  *
@@ -64,7 +65,7 @@ For commercial licensing, please contact support@quantumnous.com
  * |----------|-----------|-----------------|-----|
  * | User balance display | USD (from DB) | `formatCurrencyFromUSD()` | Needs conversion to display currency |
  * | Recharge option button | USD | `formatCurrencyFromUSD()` | Needs conversion to local currency |
- * | Payment confirmation | Already local currency | `formatLocalCurrencyAmount()` | Already converted via priceRatio |
+ * | CNY payment confirmation | CNY quote | `formatBillingCurrencyFromCNY()` | Converts actual CNY cost to display currency |
  * | Billing history Amount | USD (from DB) | `formatCurrencyFromUSD()` | Historical USD needs conversion |
  * | Billing history Payment | Local currency | `formatNumber()` | Just show number, no symbol |
  * | Model pricing | USD | `formatBillingCurrencyFromUSD()` | Never show as tokens |
@@ -74,9 +75,9 @@ For commercial licensing, please contact support@quantumnous.com
  *
  * 1. **Never double-convert**: If you multiply by exchangeRate, use formatLocalCurrencyAmount()
  * 2. **Database USD values**: Always use formatCurrencyFromUSD() for amounts stored as USD
- * 3. **Payment amounts**: Always use formatLocalCurrencyAmount() for priceRatio-calculated values
+ * 3. **CNY payment quotes**: Use formatBillingCurrencyFromCNY(); recharge price is not the display exchange rate
  * 4. **Billing displays**: Use formatBillingCurrencyFromUSD() to avoid token display
- * 5. **Effective exchange rate**: When quotaDisplayType is 'USD', use rate of 1 regardless of config
+ * 5. **USD display**: USD values need no conversion; CNY input still needs usdExchangeRate
  */
 import i18n from '@/i18n/config'
 import {
@@ -354,7 +355,7 @@ export function getCurrencyDisplay() {
  * - Any value stored in database as USD
  *
  * DO NOT use for:
- * - Payment amounts already converted via priceRatio → use formatLocalCurrencyAmount()
+ * - CNY payment quotes → use formatBillingCurrencyFromCNY()
  * - Raw token values → use formatQuotaWithCurrency()
  */
 export function formatCurrencyFromUSD(
@@ -412,7 +413,7 @@ export function formatCurrencyFromUSD(
  *
  * DO NOT use for:
  * - User balance/quota → use formatCurrencyFromUSD()
- * - Payment amounts already in local currency → use formatLocalCurrencyAmount()
+ * - CNY payment quotes → use formatBillingCurrencyFromCNY()
  */
 export function formatBillingCurrencyFromUSD(
   amountUSD: number | null | undefined,
@@ -429,6 +430,25 @@ export function formatBillingCurrencyFromUSD(
       : amountUSD
 
   return formatCurrencyValue(value, merged, meta)
+}
+
+/**
+ * Format an actual CNY payment quote using the global billing display settings.
+ *
+ * The quote already includes the recharge price, group ratio, and discount.
+ * Convert its CNY value to USD with the display exchange rate, not the recharge
+ * price, so those adjustments remain part of the amount due.
+ */
+export function formatBillingCurrencyFromCNY(
+  amountCNY: number | null | undefined,
+  options?: CurrencyFormatOptions
+): string {
+  if (amountCNY == null || Number.isNaN(amountCNY)) return '-'
+
+  return formatBillingCurrencyFromUSD(
+    amountCNY / getConfig().usdExchangeRate,
+    options
+  )
 }
 
 /**
@@ -457,7 +477,7 @@ export function formatBillingCurrencyFromUSD(
  *
  * DO NOT use for:
  * - Values already in USD → use formatCurrencyFromUSD()
- * - Payment amounts → use formatLocalCurrencyAmount()
+ * - CNY payment quotes → use formatBillingCurrencyFromCNY()
  */
 export function formatQuotaWithCurrency(
   quota: number | null | undefined,
@@ -531,8 +551,8 @@ export function isCurrencyDisplayEnabled(): boolean {
  * Format an amount that is ALREADY in local currency.
  *
  * ⚠️ CRITICAL: This function does NOT apply exchange rate conversion.
- * Only use this for values that have already been converted to local currency
- * via priceRatio or other means.
+ * Only use this for values already in the target display currency.
+ * For CNY payment quotes, use formatBillingCurrencyFromCNY() instead.
  *
  * @param amount - Amount already in local currency units
  * @param options - Optional formatting configuration
@@ -550,24 +570,15 @@ export function isCurrencyDisplayEnabled(): boolean {
  *
  * @remarks
  * Use this function for:
- * - Payment amounts calculated via priceRatio (amount × price)
- * - Actual money charged to user's payment method
- * - Values that are already in the target currency
+ * - Values that are already in the target display currency
  *
  * DO NOT use for:
  * - USD values that need conversion → use formatCurrencyFromUSD()
  * - Raw quota values → use formatQuotaWithCurrency()
  *
- * Common mistake:
- * ```ts
- * // ❌ WRONG - Double conversion
- * const payment = usdAmount * exchangeRate
- * formatLocalCurrencyAmount(payment) // Will apply exchange rate again!
- *
- * // ✅ CORRECT - Already in local currency
- * const payment = usdAmount * priceRatio
- * formatLocalCurrencyAmount(payment) // Just formats with symbol
- * ```
+ * CNY quotes are not necessarily in the target display currency:
+ * use formatBillingCurrencyFromCNY() to preserve their value when the UI
+ * displays USD or a custom currency.
  */
 export function formatLocalCurrencyAmount(
   amount: number | null | undefined,

@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSystemConfigStore } from '@/stores/system-config-store'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatBillingCurrencyFromCNY,
+  formatBillingCurrencyFromUSD,
+} from '@/lib/currency'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,7 +36,6 @@ import {
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import {
   getPaymentIcon,
-  formatPaymentCurrency,
   getStripeTopupAmountInUSD,
   isStripePayment,
   normalizePaymentAmount,
@@ -48,8 +50,8 @@ interface PaymentConfirmDialogProps {
   paymentMethod: PaymentMethod | undefined
   processing: boolean
   discountRate?: number
+  /** Actual CNY quote returned by the amount API, including discounts. */
   quotedMoney?: number
-  paymentCurrency?: string
 }
 
 export function PaymentConfirmDialog({
@@ -61,7 +63,6 @@ export function PaymentConfirmDialog({
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
   quotedMoney,
-  paymentCurrency = 'CNY',
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const currency = useSystemConfigStore((state) => state.config.currency)
@@ -103,7 +104,7 @@ export function PaymentConfirmDialog({
             <div className='flex items-baseline gap-2'>
               <span className='text-2xl font-semibold'>
                 {hasQuote
-                  ? formatPaymentCurrency(quotedMoney, paymentCurrency)
+                  ? formatBillingCurrencyFromCNY(quotedMoney)
                   : formatBillingCurrencyFromUSD(amountDue)}
               </span>
               {hasDiscount && !isStripe && (

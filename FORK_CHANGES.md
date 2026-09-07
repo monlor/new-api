@@ -59,7 +59,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - Stripe 固定 Price 充值在本地币种换算出非整美元时，确认界面会明确显示向上补足后的实际应付金额，并以同一金额创建 Checkout；不再静默向下截断导致少收款
 - Epay 充值保留本地币种换算后的小数美元额度，确认页使用后端实际报价；新增订单小数金额和到账 quota 快照，回调、人工补单及充值历史均保留精度，兼容旧整数订单，Stripe 继续按整数美元充值（`controller/topup.go`、`controller/topup_epay_decimal_test.go`、`model/topup.go`、`web/default/src/features/wallet/{index.tsx,hooks/use-payment.ts,lib/payment.ts,lib/payment.test.ts,components/dialogs/payment-confirm-dialog.tsx}`）
 - Stripe 余额充值复用 `StripeMinTopUp` 作为唯一最低额度配置：topup info、默认钱包灰显和两个 Stripe 接口使用相同门槛；令牌显示模式会同步换算上下限与 Checkout 数量，避免界面和服务端金额单位不一致
-- 余额统一使用 `formatCurrencyFromUSD` / `formatQuotaWithCurrency` 换汇显示；Epay 应付报价已是网关计价金额，使用 `formatPaymentCurrency` 按网关币种直接格式化
+- 余额统一使用 `formatCurrencyFromUSD` / `formatQuotaWithCurrency` 换汇显示；Epay 应付报价以 CNY 返回，确认页通过全局 `formatBillingCurrencyFromCNY` 按 `USDExchangeRate` 换算后复用统一账单币种与符号，保留报价中的充值定价、分组倍率和折扣，不再将 `PaymentCurrency` 直接贴到 CNY 数值上（回归测试：`web/default/src/lib/currency.test.ts`）
 - 钱包充值与订阅购买复用统一支付方式选择器，并按余额、银行卡、Epay、普通方式、虚拟货币稳定排序
 - 修复：货币符号、转账显示货币、低于全局下限禁用按钮、zh-TW 排除简中 CNY 覆盖
 
