@@ -114,8 +114,9 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 仪表盘 SummaryCards 改用 `formatQuotaWithCurrency`
 - footer 居中并移除 ProjectAttribution；combobox-input、usage-logs 列展示重构
 - 控制台 Notice 支持旧版纯文本及以 `en` 为必填回退项的语言映射；仪表盘系统公告在既有英文 `content`/`extra` 字段上支持 `translations` 映射。后端保留 JSON 对象，验证英文与各语言的内容长度，前端可在目标语言缺失时回退英文。
+- 系统公告保存：Notice / 仪表盘公告的内容长度按 Unicode 字符计数（不再用 Go `len` 按字节截断中文）；Notice 表单允许未填写的语言草稿、英文缺失时给出可见错误；公告列表保存会检查接口 `success`，避免校验失败仍提示已保存。
 
-**涉及文件：** `controller/option.go`、`setting/console_setting/validation.go`、`web/default/src/features/system-settings/maintenance/notice-section.tsx`、`web/default/src/features/dashboard/components/overview/announcements-panel.tsx`
+**涉及文件：** `controller/option.go`、`setting/console_setting/validation.go`、`web/default/src/features/system-settings/maintenance/notice-section.tsx`、`web/default/src/features/system-settings/content/announcements-section.tsx`、`web/default/src/features/dashboard/components/overview/announcements-panel.tsx`
 
 ## 九、国际化 (i18n)
 

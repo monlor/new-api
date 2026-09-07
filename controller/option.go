@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -138,7 +139,7 @@ func optionValueToString(value any) (string, error) {
 
 func validateNotice(value string) error {
 	if !strings.HasPrefix(strings.TrimSpace(value), "{") {
-		if len(value) > 500 {
+		if utf8.RuneCountInString(value) > 500 {
 			return fmt.Errorf("系统公告内容长度不能超过500字符")
 		}
 		return nil
@@ -148,8 +149,11 @@ func validateNotice(value string) error {
 	if err := common.UnmarshalJsonStr(value, &translations); err != nil {
 		return fmt.Errorf("系统公告多语言内容格式不正确")
 	}
+	if len(translations) == 0 {
+		return nil
+	}
 	english, ok := translations["en"].(string)
-	if !ok || english == "" {
+	if !ok || strings.TrimSpace(english) == "" {
 		return fmt.Errorf("系统公告必须包含非空的英文内容")
 	}
 	for language, content := range translations {
@@ -157,7 +161,7 @@ func validateNotice(value string) error {
 		if !ok {
 			return fmt.Errorf("系统公告的%s内容格式不正确", language)
 		}
-		if len(contentStr) > 500 {
+		if utf8.RuneCountInString(contentStr) > 500 {
 			return fmt.Errorf("系统公告的%s内容长度不能超过500字符", language)
 		}
 	}

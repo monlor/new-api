@@ -18,9 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
 import * as z from 'zod'
-import { useForm } from 'react-hook-form'
+import { useForm, type FieldErrors } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   ANNOUNCEMENT_LOCALES,
   type AnnouncementLocale,
@@ -28,6 +29,7 @@ import {
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -48,17 +50,30 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const noticeSchema = z.object({
   translations: z
-    .record(z.string(), z.string())
+    .record(z.string(), z.string().optional())
     .superRefine((translations, ctx) => {
-      const hasLocalizedContent = Object.values(translations).some((content) =>
-        content.trim()
+      const normalized = Object.fromEntries(
+        Object.entries(translations).map(([language, content]) => [
+          language,
+          (content ?? '').trim(),
+        ])
       )
-      if (hasLocalizedContent && !translations.en?.trim()) {
+      const hasLocalizedContent = Object.values(normalized).some(Boolean)
+      if (hasLocalizedContent && !normalized.en) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['en'],
-          message: 'English content is required',
+          message: 'English is the default notice and is required.',
         })
+      }
+      for (const [language, content] of Object.entries(translations)) {
+        if ((content ?? '').length > 500) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [language],
+            message: 'Content must be less than 500 characters',
+          })
+        }
       }
     }),
 })
@@ -101,73 +116,100 @@ export function NoticeSection({ defaultValue }: NoticeSectionProps) {
   }, [defaultValue, form])
 
   const onSubmit = async (values: NoticeFormValues) => {
-    if (!form.formState.isDirty) return
     const normalized = Object.fromEntries(
       Object.entries(values.translations).filter(([, content]) =>
-        content.trim()
+        content?.trim()
       )
     )
     await updateOption.mutateAsync({
       key: 'Notice',
-      value: JSON.stringify(normalized),
+      value:
+        Object.keys(normalized).length === 0 ? '' : JSON.stringify(normalized),
     })
   }
+
+  const onInvalid = (errors: FieldErrors<NoticeFormValues>) => {
+    if (errors.translations?.en && locale !== 'en') {
+      setLocale('en')
+    }
+    toast.error(
+      t(
+        errors.translations?.en?.message ||
+          'Please fix the highlighted fields before saving'
+      )
+    )
+  }
+
+  const englishError = form.formState.errors.translations?.en
 
   return (
     <SettingsSection title={t('System Notice')}>
       <Form {...form}>
-        <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
+        <SettingsForm onSubmit={form.handleSubmit(onSubmit, onInvalid)}>
           <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
+            onSave={form.handleSubmit(onSubmit, onInvalid)}
             isSaving={updateOption.isPending}
+            isSaveDisabled={!form.formState.isDirty}
             saveLabel='Save notice'
           />
-          <FormField
-            control={form.control}
-            name={`translations.${locale}`}
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Announcement content')}</FormLabel>
-                <Select
-                  value={locale}
-                  onValueChange={(value) =>
-                    setLocale(value as AnnouncementLocale)
-                  }
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent alignItemWithTrigger={false}>
-                    {ANNOUNCEMENT_LOCALES.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormControl>
-                  <Textarea
-                    rows={8}
-                    placeholder={t(
-                      'Planned maintenance on Friday at 22:00 UTC...'
+          <div className='space-y-4' data-settings-form-span='full'>
+            <div className='space-y-1'>
+              <FormLabel>{t('Select Language')}</FormLabel>
+              <Select
+                value={locale}
+                onValueChange={(value) =>
+                  setLocale(value as AnnouncementLocale)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {ANNOUNCEMENT_LOCALES.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                {locale === 'en'
+                  ? t('English is the default notice and is required.')
+                  : t(
+                      'When this language is empty, users see the English notice.'
                     )}
-                    {...field}
-                    value={field.value ?? ''}
-                  />
-                </FormControl>
-                <p className='text-muted-foreground text-sm'>
-                  {locale === 'en'
-                    ? t('English is the default notice and is required.')
-                    : t(
-                        'When this language is empty, users see the English notice.'
+              </FormDescription>
+            </div>
+            <FormField
+              key={locale}
+              control={form.control}
+              name={`translations.${locale}`}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Announcement content')}</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      rows={8}
+                      placeholder={t(
+                        'Planned maintenance on Friday at 22:00 UTC...'
                       )}
-                </p>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Maximum 500 characters. Supports Markdown and HTML.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {locale !== 'en' && englishError?.message ? (
+              <p className='text-destructive text-sm'>
+                {t(englishError.message)}
+              </p>
+            ) : null}
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

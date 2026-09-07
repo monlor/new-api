@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -175,11 +176,11 @@ func validateAnnouncements(announcementsStr string) error {
 				}
 			}
 		}
-		if len(content) > 500 {
+		if utf8.RuneCountInString(content) > 500 {
 			return fmt.Errorf("第%d个公告的内容长度不能超过500字符", i+1)
 		}
 		if extra, exists := ann["extra"]; exists {
-			if extraStr, ok := extra.(string); ok && len(extraStr) > 200 {
+			if extraStr, ok := extra.(string); ok && utf8.RuneCountInString(extraStr) > 200 {
 				return fmt.Errorf("第%d个公告的说明长度不能超过200字符", i+1)
 			}
 		}
@@ -209,7 +210,7 @@ func validateAnnouncementTranslations(value interface{}, index int) error {
 		if !ok || content == "" {
 			return fmt.Errorf("第%d个公告的%s翻译缺少内容字段", index, language)
 		}
-		if len(content) > 500 {
+		if utf8.RuneCountInString(content) > 500 {
 			return fmt.Errorf("第%d个公告的%s翻译内容长度不能超过500字符", index, language)
 		}
 		if extra, exists := translation["extra"]; exists {
@@ -217,7 +218,7 @@ func validateAnnouncementTranslations(value interface{}, index int) error {
 			if !ok {
 				return fmt.Errorf("第%d个公告的%s翻译说明格式不正确", index, language)
 			}
-			if len(extraStr) > 200 {
+			if utf8.RuneCountInString(extraStr) > 200 {
 				return fmt.Errorf("第%d个公告的%s翻译说明长度不能超过200字符", index, language)
 			}
 		}

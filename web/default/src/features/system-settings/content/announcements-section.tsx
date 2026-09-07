@@ -95,19 +95,21 @@ const announcementSchema = z.object({
     .optional(),
   translations: z.record(
     z.string(),
-    z.object({
-      // Selecting a language registers its fields before any content is
-      // entered. Keep that draft state valid; empty translations are removed
-      // when the announcement is submitted.
-      content: z
-        .string()
-        .max(500, 'Content must be less than 500 characters')
-        .optional(),
-      extra: z
-        .string()
-        .max(100, 'Extra must be less than 100 characters')
-        .optional(),
-    })
+    z
+      .object({
+        // Selecting a language registers its fields before any content is
+        // entered. Keep that draft state valid; empty translations are removed
+        // when the announcement is submitted.
+        content: z
+          .string()
+          .max(500, 'Content must be less than 500 characters')
+          .optional(),
+        extra: z
+          .string()
+          .max(100, 'Extra must be less than 100 characters')
+          .optional(),
+      })
+      .optional()
   ),
 })
 
@@ -276,7 +278,7 @@ export function AnnouncementsSection({
   const handleSubmitForm = (values: AnnouncementFormValues) => {
     const translations = Object.fromEntries(
       Object.entries(values.translations).filter(([, translation]) =>
-        translation.content?.trim()
+        translation?.content?.trim()
       )
     ) as AnnouncementTranslations
     const normalizedValues = {
@@ -303,12 +305,13 @@ export function AnnouncementsSection({
 
   const handleSaveAll = async () => {
     try {
-      await updateOption.mutateAsync({
+      const result = await updateOption.mutateAsync({
         key: 'console_setting.announcements',
         value: JSON.stringify(announcements),
       })
-      setHasChanges(false)
-      toast.success(t('Announcements saved successfully'))
+      if (result.success) {
+        setHasChanges(false)
+      }
     } catch {
       toast.error(t('Failed to save announcements'))
     }
@@ -527,7 +530,14 @@ export function AnnouncementsSection({
         <Form {...form}>
           <form
             id={ANNOUNCEMENT_FORM_ID}
-            onSubmit={form.handleSubmit(handleSubmitForm)}
+            onSubmit={form.handleSubmit(handleSubmitForm, () => {
+              if (!form.getValues('content')?.trim()) {
+                setEditingLocale('en')
+              }
+              toast.error(
+                t('English is the default announcement and is required.')
+              )
+            })}
             className='space-y-4'
           >
             <div className='space-y-4'>
@@ -572,6 +582,7 @@ export function AnnouncementsSection({
                 </FormDescription>
               </div>
               <FormField
+                key={contentFieldName}
                 control={form.control}
                 name={contentFieldName}
                 render={({ field }) => (
@@ -669,6 +680,7 @@ export function AnnouncementsSection({
               )}
             />
             <FormField
+              key={extraFieldName}
               control={form.control}
               name={extraFieldName}
               render={({ field }) => (
