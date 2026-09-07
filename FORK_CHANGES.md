@@ -54,7 +54,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
 - 新增 `PaymentCurrency` 选项，并在 topup info API 暴露
-- 个人资料 / 仪表盘余额按支付网关货币显示
+- 个人资料余额与累计消费复用全站 `formatQuotaWithCurrency`，随界面语言使用统一币种与汇率（简体中文显示 CNY，其他语言遵循系统显示配置）
 - 充值表单支持按本地货币输入
 - Stripe 固定 Price 充值在本地币种换算出非整美元时，确认界面会明确显示向上补足后的实际应付金额，并以同一金额创建 Checkout；不再静默向下截断导致少收款
 - Stripe 余额充值复用 `StripeMinTopUp` 作为唯一最低额度配置：topup info、默认钱包灰显和两个 Stripe 接口使用相同门槛；令牌显示模式会同步换算上下限与 Checkout 数量，避免界面和服务端金额单位不一致
@@ -63,7 +63,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 修复：货币符号、转账显示货币、低于全局下限禁用按钮、zh-TW 排除简中 CNY 覆盖
 
 **涉及文件（后端）：** `setting/operation_setting/payment_setting.go`、`controller/topup.go`、`controller/misc.go`、`model/topup.go`、`model/option.go`
-**涉及文件（前端）：** `web/default/src/features/wallet/**`、`web/default/src/features/subscriptions/components/dialogs/subscription-purchase-dialog.tsx`、`web/default/src/i18n/locales/*.json`、`web/default/src/lib/currency.ts`、`web/default/src/hooks/use-system-config.ts`、`web/default/src/stores/system-config-store.ts`
+**涉及文件（前端）：** `web/default/src/features/wallet/**`、`web/default/src/features/profile/components/profile-header.tsx`、`web/default/src/features/subscriptions/components/dialogs/subscription-purchase-dialog.tsx`、`web/default/src/i18n/locales/*.json`、`web/default/src/lib/currency.ts`、`web/default/src/hooks/use-system-config.ts`、`web/default/src/stores/system-config-store.ts`
 
 ### Stripe 支付兼容性 (Stripe Payments)
 
