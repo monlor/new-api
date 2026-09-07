@@ -18,8 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { useSystemConfigStore } from '@/stores/system-config-store'
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +33,7 @@ import {
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import {
   getPaymentIcon,
+  formatPaymentCurrency,
   getStripeTopupAmountInUSD,
   isStripePayment,
   normalizePaymentAmount,
@@ -47,6 +48,8 @@ interface PaymentConfirmDialogProps {
   paymentMethod: PaymentMethod | undefined
   processing: boolean
   discountRate?: number
+  quotedMoney?: number
+  paymentCurrency?: string
 }
 
 export function PaymentConfirmDialog({
@@ -57,19 +60,19 @@ export function PaymentConfirmDialog({
   paymentMethod,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
+  quotedMoney,
+  paymentCurrency = 'CNY',
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const currency = useSystemConfigStore((state) => state.config.currency)
   const isStripe = isStripePayment(paymentMethod?.type ?? '')
-  const stripeTopupAmountUSD = getStripeTopupAmountInUSD(
-    topupAmount,
-    currency
-  )
+  const stripeTopupAmountUSD = getStripeTopupAmountInUSD(topupAmount, currency)
   const paymentAmount = normalizePaymentAmount(
     isStripe ? stripeTopupAmountUSD : topupAmount,
     paymentMethod?.type ?? ''
   )
-  const hasDiscount = discountRate > 0 && discountRate < 1
+  const hasQuote = quotedMoney !== undefined
+  const hasDiscount = !hasQuote && discountRate > 0 && discountRate < 1
   const discountedAmount = hasDiscount
     ? topupAmount * discountRate
     : topupAmount
@@ -99,7 +102,9 @@ export function PaymentConfirmDialog({
             </span>
             <div className='flex items-baseline gap-2'>
               <span className='text-2xl font-semibold'>
-                {formatBillingCurrencyFromUSD(amountDue)}
+                {hasQuote
+                  ? formatPaymentCurrency(quotedMoney, paymentCurrency)
+                  : formatBillingCurrencyFromUSD(amountDue)}
               </span>
               {hasDiscount && !isStripe && (
                 <span className='text-muted-foreground text-sm line-through'>

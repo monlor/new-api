@@ -59,16 +59,17 @@ export function usePayment() {
 
         if (isApiSuccess(response) && response.data) {
           const calculatedAmount = parseFloat(response.data)
-          setAmount(calculatedAmount)
-          return calculatedAmount
+          if (Number.isFinite(calculatedAmount) && calculatedAmount > 0) {
+            setAmount(calculatedAmount)
+            return calculatedAmount
+          }
         }
 
-        // Don't show error for calculation, just set to 0
         setAmount(0)
-        return 0
+        return null
       } catch (_error) {
         setAmount(0)
-        return 0
+        return null
       } finally {
         setCalculating(false)
       }

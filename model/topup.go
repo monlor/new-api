@@ -12,9 +12,13 @@ import (
 )
 
 type TopUp struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
+	Id     int   `json:"id"`
+	UserId int   `json:"user_id" gorm:"index"`
+	Amount int64 `json:"amount"`
+	// New Epay orders retain fractional USD and the exact quota to credit.
+	// Additive columns keep legacy integer orders and other providers unchanged.
+	EpayAmount      float64 `json:"-" gorm:"default:0"`
+	CreditedQuota   int64   `json:"credited_quota,omitempty" gorm:"default:0"`
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
@@ -22,6 +26,28 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+}
+
+// MarshalJSON preserves the public amount field for both old integer orders
+// and fractional Epay orders, without changing the existing integer DB column.
+func (topUp TopUp) MarshalJSON() ([]byte, error) {
+	type topUpJSON TopUp
+	if topUp.PaymentProvider == PaymentProviderEpay && topUp.EpayAmount > 0 {
+		return common.Marshal(struct {
+			topUpJSON
+			Amount float64 `json:"amount"`
+		}{topUpJSON: topUpJSON(topUp), Amount: topUp.EpayAmount})
+	}
+	return common.Marshal(topUpJSON(topUp))
+}
+
+// EpayCreditQuota uses the order-time snapshot for new orders and preserves
+// settlement of pending orders created before fractional Epay support.
+func (topUp *TopUp) EpayCreditQuota() int {
+	if topUp.PaymentProvider == PaymentProviderEpay && topUp.CreditedQuota > 0 {
+		return int(topUp.CreditedQuota)
+	}
+	return int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
 }
 
 const (
@@ -356,9 +382,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
 		} else {
-			dAmount := decimal.NewFromInt(topUp.Amount)
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd = topUp.EpayCreditQuota()
 		}
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")

@@ -50,8 +50,14 @@ describe('payment amount normalization', () => {
     assert.equal(normalizePaymentAmount(14 / 7, 'stripe'), 2)
   })
 
-  test('keeps non-Stripe payment normalization unchanged', () => {
-    assert.equal(normalizePaymentAmount(13 / 7, 'alipay'), 1)
+  test('preserves fractional Epay amounts for local currency topups', () => {
+    for (const method of ['alipay', 'usdt', 'wxpay', 'custom1']) {
+      const amount = normalizePaymentAmount(90 / 7, method)
+      assert.equal(amount, 90 / 7)
+      assert.equal((amount * 7).toFixed(2), '90.00')
+      assert.equal(normalizePaymentAmount(12.53, method), 12.53)
+      assert.equal(normalizePaymentAmount(10, method), 10)
+    }
   })
 })
 
@@ -60,22 +66,34 @@ describe('payment method minimum topup', () => {
     const stripeMethod = { type: 'stripe', min_topup: 100 }
 
     assert.equal(getPaymentMethodMinTopup(stripeMethod, topupInfo), 25)
-    assert.equal(isBelowPaymentMethodMinTopup(24, stripeMethod, topupInfo), true)
-    assert.equal(isBelowPaymentMethodMinTopup(25, stripeMethod, topupInfo), false)
+    assert.equal(
+      isBelowPaymentMethodMinTopup(24, stripeMethod, topupInfo),
+      true
+    )
+    assert.equal(
+      isBelowPaymentMethodMinTopup(25, stripeMethod, topupInfo),
+      false
+    )
   })
 
   test('keeps non-Stripe method minimum behavior unchanged', () => {
     const alipayMethod = { type: 'alipay', min_topup: 15 }
 
     assert.equal(getPaymentMethodMinTopup(alipayMethod, topupInfo), 15)
-    assert.equal(isBelowPaymentMethodMinTopup(14, alipayMethod, topupInfo), true)
+    assert.equal(
+      isBelowPaymentMethodMinTopup(14, alipayMethod, topupInfo),
+      true
+    )
   })
 
   test('allows Stripe payments at any non-negative amount when no minimum is configured', () => {
     const stripeMethod = { type: 'stripe', min_topup: 100 }
     const unrestrictedTopupInfo = { ...topupInfo, stripe_min_topup: 0 }
 
-    assert.equal(getPaymentMethodMinTopup(stripeMethod, unrestrictedTopupInfo), 0)
+    assert.equal(
+      getPaymentMethodMinTopup(stripeMethod, unrestrictedTopupInfo),
+      0
+    )
     assert.equal(
       isBelowPaymentMethodMinTopup(0, stripeMethod, unrestrictedTopupInfo),
       false

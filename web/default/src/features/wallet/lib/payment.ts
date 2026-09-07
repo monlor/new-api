@@ -17,15 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  DEFAULT_CURRENCY_CONFIG,
+  type CurrencyConfig,
+} from '@/stores/system-config-store'
+import {
   PAYMENT_TYPES,
   DEFAULT_PRESET_MULTIPLIERS,
   DEFAULT_PAYMENT_TYPE,
   DEFAULT_MIN_TOPUP,
 } from '../constants'
-import {
-  DEFAULT_CURRENCY_CONFIG,
-  type CurrencyConfig,
-} from '@/stores/system-config-store'
 import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
 
 // ============================================================================
@@ -112,15 +112,15 @@ export function isBelowPaymentMethodMinTopup(
  * Normalize a topup amount for the payment provider's request contract.
  *
  * Stripe Checkout uses a fixed Price with an integer Quantity, so a partial
- * USD amount must be charged as the next whole USD unit. Other providers keep
- * their existing integer truncation behavior.
+ * USD amount must be charged as the next whole USD unit. Epay accepts
+ * fractional amounts, including amounts converted from local currency.
  */
 export function normalizePaymentAmount(
   topupAmount: number,
   paymentType: string
 ): number {
   if (!isStripePayment(paymentType)) {
-    return Math.floor(topupAmount)
+    return topupAmount
   }
 
   // Currency conversion can produce a value such as 2.0000000000000004 for

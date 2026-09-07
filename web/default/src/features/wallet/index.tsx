@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { getSelf } from '@/lib/api'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
@@ -41,6 +42,7 @@ import {
 import {
   getMinTopupAmount,
   isBelowPaymentMethodMinTopup,
+  isStripePayment,
   isWaffoPancakePayment,
 } from './lib'
 import type {
@@ -54,14 +56,21 @@ interface WalletProps {
   initialShowHistory?: boolean
 }
 
+interface PaymentSelection {
+  method: PaymentMethod
+  amount: number
+  quotedMoney?: number
+  currency: string
+}
+
 export function Wallet(props: WalletProps) {
   const { t } = useTranslation()
   const [user, setUser] = useState<UserWalletData | null>(null)
   const [userLoading, setUserLoading] = useState(true)
   const [topupAmount, setTopupAmount] = useState(0)
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<PaymentMethod>()
+  const [paymentSelection, setPaymentSelection] = useState<PaymentSelection>()
+  const paymentSelectionVersion = useRef(0)
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
@@ -74,10 +83,7 @@ export function Wallet(props: WalletProps) {
 
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
-  const {
-    processing,
-    processPayment,
-  } = usePayment()
+  const { processing, processPayment, calculatePaymentAmount } = usePayment()
   const {
     affiliateLink,
     loading: affiliateLoading,
@@ -127,12 +133,16 @@ export function Wallet(props: WalletProps) {
 
   // Handle preset selection
   const handleSelectPreset = (preset: PresetAmount) => {
+    paymentSelectionVersion.current += 1
+    setPaymentLoading(null)
     setTopupAmount(preset.value)
     setSelectedPreset(preset.value)
   }
 
   // Handle topup amount change
   const handleTopupAmountChange = (amount: number) => {
+    paymentSelectionVersion.current += 1
+    setPaymentLoading(null)
     setTopupAmount(amount)
     setSelectedPreset(null)
   }
@@ -143,33 +153,60 @@ export function Wallet(props: WalletProps) {
       return
     }
 
-    setSelectedPaymentMethod(method)
+    const version = ++paymentSelectionVersion.current
+    const selection: PaymentSelection = {
+      method,
+      amount: topupAmount,
+      currency: topupInfo?.payment_currency || 'CNY',
+    }
+    setPaymentSelection(undefined)
     setPaymentLoading(method.type)
 
     try {
+      if (
+        !isStripePayment(method.type) &&
+        !isWaffoPancakePayment(method.type)
+      ) {
+        const quote = await calculatePaymentAmount(
+          selection.amount,
+          method.type
+        )
+        if (version !== paymentSelectionVersion.current) return
+        if (quote === null) {
+          toast.error(t('Payment request failed'))
+          return
+        }
+        selection.quotedMoney = quote
+      }
+      setPaymentSelection(selection)
       setConfirmDialogOpen(true)
     } finally {
-      setPaymentLoading(null)
+      if (version === paymentSelectionVersion.current) {
+        setPaymentLoading(null)
+      }
     }
   }
 
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
-    if (!selectedPaymentMethod) return
+    if (!paymentSelection) return
     if (
       isBelowPaymentMethodMinTopup(
-        topupAmount,
-        selectedPaymentMethod,
+        paymentSelection.amount,
+        paymentSelection.method,
         topupInfo
       )
     ) {
       return
     }
 
-    const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
+    const isPancake = isWaffoPancakePayment(paymentSelection.method.type)
     const success = isPancake
-      ? await processWaffoPancakePayment(topupAmount)
-      : await processPayment(topupAmount, selectedPaymentMethod.type)
+      ? await processWaffoPancakePayment(paymentSelection.amount)
+      : await processPayment(
+          paymentSelection.amount,
+          paymentSelection.method.type
+        )
 
     if (success) {
       setConfirmDialogOpen(false)
@@ -243,7 +280,11 @@ export function Wallet(props: WalletProps) {
       <SectionPageLayout>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
-            <WalletStatsCard user={user} loading={userLoading} topupInfo={topupInfo} />
+            <WalletStatsCard
+              user={user}
+              loading={userLoading}
+              topupInfo={topupInfo}
+            />
 
             <AffiliateRewardsCard
               user={user}
@@ -307,8 +348,10 @@ export function Wallet(props: WalletProps) {
         open={confirmDialogOpen}
         onOpenChange={setConfirmDialogOpen}
         onConfirm={handlePaymentConfirm}
-        topupAmount={topupAmount}
-        paymentMethod={selectedPaymentMethod}
+        topupAmount={paymentSelection?.amount ?? topupAmount}
+        paymentMethod={paymentSelection?.method}
+        quotedMoney={paymentSelection?.quotedMoney}
+        paymentCurrency={paymentSelection?.currency}
         processing={processing || pancakeProcessing}
         discountRate={getDiscountRate()}
       />
