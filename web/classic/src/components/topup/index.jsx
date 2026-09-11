@@ -114,8 +114,6 @@ const TopUp = () => {
   // 订阅相关
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
-  const [billingPreference, setBillingPreference] =
-    useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
 
@@ -555,9 +553,6 @@ const TopUp = () => {
     try {
       const res = await API.get('/api/subscription/self');
       if (res.data?.success) {
-        setBillingPreference(
-          res.data.data?.billing_preference || 'subscription_first',
-        );
         // Active subscriptions
         const activeSubs = res.data.data?.subscriptions || [];
         setActiveSubscriptions(activeSubs);
@@ -567,28 +562,6 @@ const TopUp = () => {
       }
     } catch (e) {
       // ignore
-    }
-  };
-
-  const updateBillingPreference = async (pref) => {
-    const previousPref = billingPreference;
-    setBillingPreference(pref);
-    try {
-      const res = await API.put('/api/subscription/self/preference', {
-        billing_preference: pref,
-      });
-      if (res.data?.success) {
-        showSuccess(t('更新成功'));
-        const normalizedPref =
-          res.data?.data?.billing_preference || pref || previousPref;
-        setBillingPreference(normalizedPref);
-      } else {
-        showError(res.data?.message || t('更新失败'));
-        setBillingPreference(previousPref);
-      }
-    } catch (e) {
-      showError(t('请求失败'));
-      setBillingPreference(previousPref);
     }
   };
 
@@ -1010,8 +983,6 @@ const TopUp = () => {
           onOpenHistory={handleOpenHistory}
           subscriptionLoading={subscriptionLoading}
           subscriptionPlans={subscriptionPlans}
-          billingPreference={billingPreference}
-          onChangeBillingPreference={updateBillingPreference}
           activeSubscriptions={activeSubscriptions}
           allSubscriptions={allSubscriptions}
           reloadSubscriptionSelf={getSubscriptionSelf}

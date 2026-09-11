@@ -27,6 +27,10 @@ export const isUserDeleted = (user: UserType): boolean => {
   return user.DeletedAt != null
 }
 
+export const isHighRiskUser = (user: Pick<UserType, 'high_risk'>): boolean => {
+  return Boolean(user.high_risk)
+}
+
 // ============================================================================
 // User Status Configuration
 // ============================================================================
@@ -59,6 +63,11 @@ export const getUserStatusOptions = (t: (key: string) => string) => [
   { label: t('Enabled'), value: String(USER_STATUS.ENABLED) },
   { label: t('Disabled'), value: String(USER_STATUS.DISABLED) },
   { label: t('Deleted'), value: String(USER_STATUS.DELETED) },
+]
+
+export const getUserHighRiskOptions = (t: (key: string) => string) => [
+  { label: t('High risk'), value: 'true' },
+  { label: t('Not high risk'), value: 'false' },
 ]
 
 // ============================================================================

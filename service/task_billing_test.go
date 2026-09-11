@@ -44,6 +44,8 @@ func TestMain(m *testing.M) {
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
+		&model.SubscriptionPlan{},
+		&model.SubscriptionPreConsumeRecord{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -57,7 +59,7 @@ func TestMain(m *testing.M) {
 
 func truncate(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() {
+	clear := func() {
 		model.DB.Exec("DELETE FROM tasks")
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
@@ -65,7 +67,11 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
-	})
+		model.DB.Exec("DELETE FROM subscription_plans")
+		model.DB.Exec("DELETE FROM subscription_pre_consume_records")
+	}
+	clear()
+	t.Cleanup(clear)
 }
 
 func seedUser(t *testing.T, id int, quota int) {

@@ -41,6 +41,7 @@ import {
 import type { UserSubscriptionBatchMap } from '@/features/subscriptions/types'
 import { type User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import { HighRiskBadge } from './high-risk-badge'
 
 function getSubProgressColor(pct: number): string {
   if (pct >= 90) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
@@ -101,6 +102,11 @@ export function useUsersColumns(
               <LongText className='max-w-[140px] font-medium'>
                 {username}
               </LongText>
+              {row.original.high_risk && (
+                <span className='sm:hidden'>
+                  <HighRiskBadge user={row.original} />
+                </span>
+              )}
               {remark && (
                 <Tooltip>
                   <TooltipTrigger
@@ -125,6 +131,13 @@ export function useUsersColumns(
       enableHiding: false,
       size: 220,
       meta: { mobileTitle: true },
+    },
+    {
+      accessorKey: 'high_risk',
+      header: t('High risk'),
+      cell: ({ row }) => <HighRiskBadge user={row.original} />,
+      size: 160,
+      meta: { mobileHidden: true },
     },
     {
       accessorKey: 'status',

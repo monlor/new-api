@@ -28,6 +28,7 @@ import {
   ArrowDown,
   KeyRound,
   ShieldAlert,
+  ShieldOff,
   Link2,
   CreditCard,
 } from 'lucide-react'
@@ -50,6 +51,7 @@ import {
   USER_ROLE,
   ERROR_MESSAGES,
   isUserDeleted,
+  isHighRiskUser,
 } from '../constants'
 import { getUserActionMessage } from '../lib'
 import { type User, type ManageUserAction } from '../types'
@@ -87,7 +89,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         triggerRefresh()
       } else {
         toast.error(
-          result.message || t('Failed to {{action}} user', { action })
+          result.message ||
+            (action === 'clear_high_risk'
+              ? t('Failed to clear high-risk flag')
+              : t('Failed to {{action}} user', { action }))
         )
       }
     } catch (_error) {
@@ -149,13 +154,22 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
           <MoreHorizontal className='h-4 w-4' />
           <span className='sr-only'>{t('Open menu')}</span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-[180px]'>
+        <DropdownMenuContent align='end' className='min-w-[220px]'>
           <DropdownMenuItem onClick={handleEdit}>
             {t('Edit')}
             <DropdownMenuShortcut>
               <Pencil size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
+
+          {isHighRiskUser(user) && (
+            <DropdownMenuItem onClick={() => handleManage('clear_high_risk')}>
+              {t('Clear high-risk flag')}
+              <DropdownMenuShortcut>
+                <ShieldOff size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
 
           <DropdownMenuSeparator />
 

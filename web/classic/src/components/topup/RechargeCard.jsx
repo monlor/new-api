@@ -92,8 +92,6 @@ const RechargeCard = ({
   enableWaffoPancakeTopUp,
   subscriptionLoading = false,
   subscriptionPlans = [],
-  billingPreference,
-  onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
@@ -685,8 +683,6 @@ const RechargeCard = ({
                 enableOnlineTopUp={enableOnlineTopUp}
                 enableStripeTopUp={enableStripeTopUp}
                 enableCreemTopUp={enableCreemTopUp}
-                billingPreference={billingPreference}
-                onChangeBillingPreference={onChangeBillingPreference}
                 activeSubscriptions={activeSubscriptions}
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}

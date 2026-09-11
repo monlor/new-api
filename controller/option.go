@@ -106,6 +106,10 @@ func GetOptions(c *gin.Context) {
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
 	})
+	options = append(options, &model.Option{
+		Key:   "content_review.default_prompt",
+		Value: setting.DefaultContentReviewPrompt,
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

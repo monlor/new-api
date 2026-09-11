@@ -105,6 +105,12 @@ func Distribute() func(c *gin.Context) {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+						selectBillingType := service.EffectiveChannelSelectBillingType(c)
+						if !model.IsBillingTypeCompatible(preferred.BillingType, selectBillingType) {
+							preferred = nil
+						}
+					}
+					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 							autoGroups := service.GetUserAutoGroup(userGroup)

@@ -37,8 +37,12 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - WSS 预扣费改用 `PriceData.ChannelRatio`
 - token 创建时校验 `billing_type` 取值范围
 - 渠道 `billing_type` 标签规范化（"No restriction" → "No Restriction"）
+- 「优先订阅」API Key 在用户没有可用订阅额度、或**任一单份**订阅剩余不足以覆盖本次预扣时，按余额渠道筛选（排除仅订阅渠道）；多份 leftover 合计够但单份不够仍走拆分/钱包，避免落到仅订阅渠道后 403
+- 到期未写入的周期重置视为可用剩余额度（套餐非 never 时），避免 exhausted+due-reset 被当成无订阅；ResetNever 即使 NextResetTime 过期也不算重置
+- 去掉钱包侧全局计费优先级（`billing_preference`）；扣费只看 API Key 与渠道计费类型，优先订阅固定为先订阅后余额
+- 优先订阅在剩余额度不足一次请求时，用尽订阅剩余额度，差额从钱包补齐；拆分扣费不走信任额度旁路，且仅兼容无限制渠道
 
-**涉及文件：** `relay/common/billing.go`、`relay/common/relay_info.go`、`relay/helper/price.go`、`service/billing_session.go`、`service/channel_select.go`、`service/text_quota.go`、`service/quota.go`、`service/task_billing.go`、`pkg/billingexpr/settle.go`、`pkg/billingexpr/types.go`、`types/price_data.go`、`model/pricing.go`、`model/pricing_default.go`、`model/channel.go`、`model/channel_cache.go`、`model/ability.go`、`model/token.go`、`controller/relay.go`、`controller/token.go`、`middleware/distributor.go`
+**涉及文件：** `relay/common/billing.go`、`relay/common/relay_info.go`、`relay/helper/price.go`、`relay/relay_task.go`、`service/billing_session.go`、`service/funding_source.go`、`service/channel_select.go`、`service/text_quota.go`、`service/quota.go`、`service/task_billing.go`、`pkg/billingexpr/settle.go`、`pkg/billingexpr/types.go`、`types/price_data.go`、`model/pricing.go`、`model/pricing_default.go`、`model/channel.go`、`model/channel_cache.go`、`model/ability.go`、`model/token.go`、`model/subscription.go`、`controller/relay.go`、`controller/token.go`、`middleware/distributor.go`
 
 ## 二、订阅 (Subscription)
 
@@ -47,9 +51,10 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 购买弹窗额度展示优化、管理员侧用户订阅视图
 - Stripe 自动续费：保存 Customer/Subscription/Price 映射，幂等处理续费成功、扣款失败、订阅更新/删除事件；使用 Stripe 事件创建时间、账期和发票单调保护拒绝乱序回退；Customer Portal 套餐切换当前不受支持，订阅同步与续费发票均 fail closed 校验 Stripe Price、映射 Price 和本地套餐 Price 三者一致后，才推进本地有效期并重置周期额度
 - `/api/subscription/self` 暴露可空的支付渠道订阅状态，并提供鉴权后的 Stripe Customer Portal Session 接口；Portal 按当前用户与本地订阅 ID 精确解析 Customer
+- 移除钱包页计费优先级选择与 `/api/subscription/self/preference`
 - Stripe 设置页增加生产上线清单：Webhook URL/签名密钥与完整事件集、Customer Portal 功能边界、recurring Price 周期一致性、test/live 模式隔离，以及仅新购且已有 Stripe 映射的订阅可进入 Portal
 
-**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/wallet/components/subscription-plans-card.tsx`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/wallet/components/subscription-plans-card.tsx`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
 
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
@@ -169,7 +174,18 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 **未采纳：** `dfcb74b5`（`allow_wallet_overflow` 迁移——该列属上游订阅新功能，本 Fork 无）、`43c7e30a`（classic 主题，本 Fork 用 default）、`cb841850`（仅给 channel type 58 Advanced Custom 换图标，本 Fork 无该渠道类型）、`e5250d64`（与 `34287afe` 重复）。
 
-## 十三、文档 (Docs)
+## 十三、内容审查 (Content Review)
+
+- 管理员可启用对用户提示词的 LLM 审查：使用系统内已配置渠道模型，自定义审查提示词
+- 运行模式线性三档 `off | async | block`（参考 sub2api）：关闭 / 后台审查不挡请求 / 同步拦截当次请求
+- 按置信度阈值标记用户为高风险（用户列表展示/筛选/清除）；仅 block 模式可拦截当次请求
+- 审查失败/超时默认 fail-open；审查调用不向用户计费
+- 默认审查提示词聚焦 cyber abuse、网络虐待（霸凌/骚扰）与人身伤害，其它内容放行；内置词只维护在后端，设置页预填该文本方便修改，「恢复默认」填回内置词
+- block 拦截（含 fail-closed）写入使用日志的错误记录（type=error），不依赖 `ERROR_LOG_ENABLED`；含置信度与拦截原因
+
+**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`model/user.go`、`model/ability.go`、`types/error.go`、`relay/channel/api_request.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/users/**`、`web/default/src/features/usage-logs/**`、`web/default/src/i18n/locales/*.json`
+
+## 十四、文档 (Docs)
 
 - AGENTS.md 为项目规范单一来源，CLAUDE.md 软链接指向它
 - 新增 agent-team harness 章节

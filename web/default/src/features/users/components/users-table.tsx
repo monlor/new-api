@@ -34,6 +34,7 @@ import {
   USER_STATUS,
   getUserStatusOptions,
   getUserRoleOptions,
+  getUserHighRiskOptions,
   isUserDeleted,
 } from '../constants'
 import type { User } from '../types'
@@ -69,6 +70,7 @@ export function UsersTable() {
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: 'high_risk', searchKey: 'high_risk', type: 'array' },
     ],
   })
   const statusFilter =
@@ -82,8 +84,13 @@ export function UsersTable() {
   const groupFilter =
     (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
     ''
+  const highRiskFilter =
+    (columnFilters.find((filter) => filter.id === 'high_risk')?.value as
+      | string[]
+      | undefined) ?? []
 
   // Fetch data with React Query
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- filter arrays are the query identity
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'users',
@@ -93,12 +100,16 @@ export function UsersTable() {
       statusFilter,
       roleFilter,
       groupFilter,
+      highRiskFilter,
       refreshTrigger,
     ],
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
       const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+        statusFilter.length > 0 ||
+        roleFilter.length > 0 ||
+        Boolean(groupFilter) ||
+        highRiskFilter.length > 0
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -112,6 +123,7 @@ export function UsersTable() {
               status: statusFilter[0] ?? '',
               role: roleFilter[0] ?? '',
               group: groupFilter,
+              high_risk: highRiskFilter[0] ?? '',
             })
           : await getUsers(params)
 
@@ -190,6 +202,12 @@ export function UsersTable() {
             columnId: 'role',
             title: t('Role'),
             options: getUserRoleOptions(t),
+            singleSelect: true,
+          },
+          {
+            columnId: 'high_risk',
+            title: t('High risk'),
+            options: getUserHighRiskOptions(t),
             singleSelect: true,
           },
         ],

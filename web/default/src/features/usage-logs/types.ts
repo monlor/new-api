@@ -198,6 +198,10 @@ export interface LogOtherData {
   upstream_quota?: number
   // Reject / intercept reason (admin)
   reject_reason?: string
+  // Content review block (error logs)
+  content_review?: boolean
+  content_review_failed?: boolean
+  confidence?: number
   // Task-related fields (for refund logs, type=6)
   is_task?: boolean
   task_id?: string

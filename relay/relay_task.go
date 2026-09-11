@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -19,6 +20,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -143,6 +145,11 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 // 控制器负责 defer Refund 和成功后 Settle。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
 	info.InitChannelMeta(c)
+	if info.Billing != nil {
+		if apiErr := service.EnsureBillingSessionForChannel(c, info, info.PriceData.Quota); apiErr != nil {
+			return nil, service.TaskErrorFromAPIError(apiErr)
+		}
+	}
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
 	platform := constant.TaskPlatform(c.GetString("platform"))
@@ -187,26 +194,51 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+	estimatedRatios := adaptor.EstimateBilling(c, info)
+	if len(estimatedRatios) > 0 {
 		for k, v := range estimatedRatios {
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
 
-	// 6. 将 OtherRatios 应用到基础额度
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
+	applyTaskOtherRatios := func() {
+		if common.StringsContains(constant.TaskPricePatches, modelName) {
+			return
+		}
 		for _, ra := range info.PriceData.OtherRatios {
 			if ra != 1.0 {
 				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ra)
 			}
 		}
 	}
+	applyTaskOtherRatios()
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
-	if info.Billing == nil && !info.PriceData.FreeModel {
-		info.ForcePreConsume = true
-		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
-			return nil, service.TaskErrorFromAPIError(apiErr)
+	if info.Billing == nil {
+		if !info.PriceData.FreeModel {
+			changed, apiErr := refreshChannelSelectionForPreConsume(c, info, info.PriceData.Quota)
+			if apiErr != nil {
+				return nil, service.TaskErrorFromAPIError(apiErr)
+			}
+			if changed {
+				repriced, priceErr := helper.ModelPriceHelperPerCall(c, info)
+				if priceErr != nil {
+					return nil, service.TaskErrorWrapper(priceErr, "model_price_error", http.StatusBadRequest)
+				}
+				info.PriceData = repriced
+				if len(estimatedRatios) > 0 {
+					for k, v := range estimatedRatios {
+						info.PriceData.AddOtherRatio(k, v)
+					}
+				}
+				applyTaskOtherRatios()
+			}
+		}
+		if !info.PriceData.FreeModel {
+			info.ForcePreConsume = true
+			if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
+				return nil, service.TaskErrorFromAPIError(apiErr)
+			}
 		}
 	}
 
@@ -255,6 +287,45 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+// refreshChannelSelectionForPreConsume re-filters 优先订阅 once price is known.
+// Leftover that cannot cover need must not stay on a subscription-only channel.
+func refreshChannelSelectionForPreConsume(c *gin.Context, relayInfo *relaycommon.RelayInfo, need int) (bool, *types.NewAPIError) {
+	resolved := service.RefreshEffectiveChannelSelectBillingType(c, need)
+	if relayInfo == nil || relayInfo.ChannelMeta == nil {
+		return false, nil
+	}
+	if _, pinned := c.Get("specific_channel_id"); pinned {
+		return false, nil
+	}
+	if model.IsBillingTypeCompatible(relayInfo.ChannelMeta.ChannelBillingType, resolved) {
+		return false, nil
+	}
+	group := relayInfo.UsingGroup
+	if group == "" {
+		group = relayInfo.TokenGroup
+	}
+	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+		Ctx:        c,
+		TokenGroup: group,
+		ModelName:  relayInfo.OriginModelName,
+		Retry:      common.GetPointer(0),
+	})
+	if err != nil {
+		return false, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败: %s", selectGroup, relayInfo.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	if channel == nil {
+		return false, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在", selectGroup, relayInfo.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	if apiErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); apiErr != nil {
+		return false, apiErr
+	}
+	relayInfo.InitChannelMeta(c)
+	if relayInfo.ChannelMeta != nil {
+		relayInfo.PriceData.ChannelRatio = relayInfo.ChannelMeta.ChannelRatio
+	}
+	return true, nil
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。

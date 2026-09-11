@@ -94,10 +94,10 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-// isBillingTypeCompatible reports whether a channel is accessible given the token's billing type.
+// IsBillingTypeCompatible reports whether a channel is accessible given the token's billing type.
 // Channel type 0 (all/无限制) accepts any token. Token type 0 (default) accepts any channel.
 // Otherwise channel and token billing types must match.
-func isBillingTypeCompatible(channelBillingType, tokenBillingType int) bool {
+func IsBillingTypeCompatible(channelBillingType, tokenBillingType int) bool {
 	if tokenBillingType == ChannelBillingTypeAll {
 		return true
 	}
@@ -129,23 +129,30 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 		return nil, nil
 	}
 
-	if len(channels) == 1 {
-		if channel, ok := channelsIDM[channels[0]]; ok {
-			if !isBillingTypeCompatible(channel.BillingType, tokenBillingType) {
-				return nil, nil
-			}
-			return channel, nil
+	compatible := make([]int, 0, len(channels))
+	for _, channelId := range channels {
+		channel, ok := channelsIDM[channelId]
+		if !ok {
+			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
 		}
-		return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channels[0])
+		if !IsBillingTypeCompatible(channel.BillingType, tokenBillingType) {
+			continue
+		}
+		compatible = append(compatible, channelId)
+	}
+	if len(compatible) == 0 {
+		return nil, nil
+	}
+	channels = compatible
+
+	if len(channels) == 1 {
+		return channelsIDM[channels[0]], nil
 	}
 
 	uniquePriorities := make(map[int]bool)
 	for _, channelId := range channels {
-		if channel, ok := channelsIDM[channelId]; ok {
-			uniquePriorities[int(channel.GetPriority())] = true
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
-		}
+		channel := channelsIDM[channelId]
+		uniquePriorities[int(channel.GetPriority())] = true
 	}
 	var sortedUniquePriorities []int
 	for priority := range uniquePriorities {
@@ -158,20 +165,13 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 	}
 	targetPriority := int64(sortedUniquePriorities[retry])
 
-	// get the priority for the given retry number, filtered by billing type compatibility
 	var sumWeight = 0
 	var targetChannels []*Channel
 	for _, channelId := range channels {
-		if channel, ok := channelsIDM[channelId]; ok {
-			if channel.GetPriority() == targetPriority {
-				if !isBillingTypeCompatible(channel.BillingType, tokenBillingType) {
-					continue
-				}
-				sumWeight += channel.GetWeight()
-				targetChannels = append(targetChannels, channel)
-			}
-		} else {
-			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelId)
+		channel := channelsIDM[channelId]
+		if channel.GetPriority() == targetPriority {
+			sumWeight += channel.GetWeight()
+			targetChannels = append(targetChannels, channel)
 		}
 	}
 
@@ -179,8 +179,9 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
 	}
 
-	// For subscription-preferred tokens, prefer subscription-capable channels.
-	// Only fall back to balance-only channels if no subscription channels exist at this priority.
+	// For subscription-preferred tokens (type All, after the caller confirmed an
+	// active subscription), prefer subscription-capable channels. Only fall back
+	// to balance-only channels if no subscription channels exist at this priority.
 	if tokenBillingType == ChannelBillingTypeAll {
 		var subChannels []*Channel
 		var subWeight int

@@ -308,8 +308,14 @@ func SearchUsers(c *gin.Context) {
 			status = &parsed
 		}
 	}
+	var highRisk *bool
+	if highRiskStr := strings.TrimSpace(c.Query("high_risk")); highRiskStr != "" {
+		if parsed, err := strconv.ParseBool(highRiskStr); err == nil {
+			highRisk = &parsed
+		}
+	}
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, role, status, highRisk, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -989,6 +995,21 @@ func ManageUser(c *gin.Context) {
 		}
 	case "enable":
 		user.Status = common.UserStatusEnabled
+	case "clear_high_risk":
+		if err := model.ClearUserHighRisk(user.Id); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		recordManageAuditFor(c, user.Id, "user.clear_high_risk", map[string]interface{}{
+			"username": user.Username,
+			"id":       user.Id,
+		})
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data":    gin.H{"high_risk": false},
+		})
+		return
 	case "delete":
 		if user.Role == common.RoleRootUser {
 			common.ApiErrorI18n(c, i18n.MsgUserCannotDeleteRootUser)

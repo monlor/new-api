@@ -55,18 +55,66 @@ func GetEnabledModels() []string {
 	return models
 }
 
+// GetEnabledChannelByModel returns an enabled channel that serves modelName.
+// If preferredGroup is non-empty, only that group is searched.
+func GetEnabledChannelByModel(modelName, preferredGroup string) (*Channel, string, error) {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return nil, "", errors.New("model is empty")
+	}
+	preferredGroup = strings.TrimSpace(preferredGroup)
+	return getEnabledChannelByModel(modelName, preferredGroup)
+}
+
+func getEnabledChannelByModel(modelName, group string) (*Channel, string, error) {
+	var ability Ability
+	query := DB.Table("abilities").
+		Select("abilities.*").
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.model = ? AND abilities.enabled = ? AND channels.status = ?", modelName, true, common.ChannelStatusEnabled)
+	if group != "" {
+		query = query.Where("abilities."+commonGroupCol+" = ?", group)
+	}
+	if err := query.Order("abilities.priority DESC").First(&ability).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, "", fmt.Errorf("no enabled channel for model %s", modelName)
+		}
+		return nil, "", err
+	}
+	channel, err := GetChannelById(ability.ChannelId, true)
+	if err != nil {
+		return nil, "", err
+	}
+	return channel, ability.Group, nil
+}
+
 func GetAllEnableAbilities() []Ability {
 	var abilities []Ability
 	DB.Find(&abilities, "enabled = ?", true)
 	return abilities
 }
 
-func getPriority(group string, model string, retry int) (int, error) {
+func applyAbilityBillingTypeFilter(query *gorm.DB, tokenBillingType int) *gorm.DB {
+	if tokenBillingType == ChannelBillingTypeAll {
+		return query
+	}
+	allowedTypes := []int{ChannelBillingTypeAll, tokenBillingType}
+	return query.Where(
+		"channel_id IN (?)",
+		DB.Table("channels").Select("id").Where("COALESCE(billing_type, 0) IN ?", allowedTypes),
+	)
+}
+
+func getPriority(group string, model string, retry int, tokenBillingType int) (int, error) {
 
 	var priorities []int
-	err := DB.Model(&Ability{}).
-		Select("DISTINCT(priority)").
-		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+	query := applyAbilityBillingTypeFilter(
+		DB.Model(&Ability{}).
+			Select("DISTINCT(priority)").
+			Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true),
+		tokenBillingType,
+	)
+	err := query.
 		Order("priority DESC").              // 按优先级降序排序
 		Pluck("priority", &priorities).Error // Pluck用于将查询的结果直接扫描到一个切片中
 
@@ -92,22 +140,22 @@ func getPriority(group string, model string, retry int) (int, error) {
 }
 
 func getChannelQuery(group string, model string, retry int, tokenBillingType int) (*gorm.DB, error) {
-	maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true)
-	channelQuery := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery)
+	maxPrioritySubQuery := applyAbilityBillingTypeFilter(
+		DB.Model(&Ability{}).Select("MAX(priority)").Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true),
+		tokenBillingType,
+	)
+	channelQuery := applyAbilityBillingTypeFilter(
+		DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = (?)", group, model, true, maxPrioritySubQuery),
+		tokenBillingType,
+	)
 	if retry != 0 {
-		priority, err := getPriority(group, model, retry)
+		priority, err := getPriority(group, model, retry, tokenBillingType)
 		if err != nil {
 			return nil, err
-		} else {
-			channelQuery = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority)
 		}
-	}
-
-	if tokenBillingType != ChannelBillingTypeAll {
-		allowedTypes := []int{ChannelBillingTypeAll, tokenBillingType}
-		channelQuery = channelQuery.Where(
-			"channel_id IN (?)",
-			DB.Table("channels").Select("id").Where("COALESCE(billing_type, 0) IN ?", allowedTypes),
+		channelQuery = applyAbilityBillingTypeFilter(
+			DB.Where(commonGroupCol+" = ? and model = ? and enabled = ? and priority = ?", group, model, true, priority),
+			tokenBillingType,
 		)
 	}
 
@@ -123,8 +171,9 @@ func GetChannel(group string, model string, retry int, tokenBillingType int) (*C
 		return nil, err
 	}
 
-	// For subscription-preferred tokens, prefer subscription-capable channels.
-	// Only fall back to balance-only channels if no subscription channels exist.
+	// For subscription-preferred tokens (type All, after the caller confirmed an
+	// active subscription), prefer subscription-capable channels. Only fall back
+	// to balance-only channels if no subscription channels exist.
 	if tokenBillingType == ChannelBillingTypeAll {
 		subQuery := channelQuery.Where(
 			"channel_id IN (?)",

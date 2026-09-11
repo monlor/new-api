@@ -71,8 +71,18 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		}
 	}
 	// 3) 更新 relayInfo 上的订阅 PostDelta（用于日志）
-	if s.funding.Source() == BillingSourceSubscription {
+	if split, ok := s.funding.(*SplitFunding); ok {
+		s.relayInfo.SubscriptionPostDelta += split.lastSubSettleDelta
+		if split.wallet != nil {
+			s.relayInfo.WalletQuotaDeducted = split.wallet.consumed
+		}
+	} else if s.funding.Source() == BillingSourceSubscription {
 		s.relayInfo.SubscriptionPostDelta += int64(delta)
+	} else if wallet, ok := s.funding.(*WalletFunding); ok {
+		s.relayInfo.WalletQuotaDeducted = wallet.consumed
+		if delta > 0 {
+			s.relayInfo.WalletQuotaDeducted += delta
+		}
 	}
 	s.settled = true
 	return tokenErr
@@ -140,6 +150,14 @@ func (s *BillingSession) needsRefundLocked() bool {
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
+	}
+	if split, ok := s.funding.(*SplitFunding); ok {
+		if split.sub != nil && split.sub.preConsumed > 0 {
+			return true
+		}
+		if split.wallet != nil && split.wallet.consumed > 0 {
+			return true
+		}
 	}
 	return false
 }
@@ -211,7 +229,9 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 
 	s.preConsumedQuota += delta
 	s.tokenConsumed += delta
-	s.extraReserved += delta
+	if _, isSplit := s.funding.(*SplitFunding); !isSplit {
+		s.extraReserved += delta
+	}
 	s.syncRelayInfo()
 	return nil
 }
@@ -254,7 +274,9 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "no active subscription") || strings.Contains(errMsg, "subscription quota insufficient") {
+		if strings.Contains(errMsg, "no active subscription") ||
+			strings.Contains(errMsg, "subscription quota insufficient") ||
+			strings.Contains(errMsg, "wallet quota insufficient") {
 			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
@@ -275,6 +297,15 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
+		return nil
+	case *SplitFunding:
+		if funding.wallet == nil {
+			funding.wallet = &WalletFunding{userId: s.relayInfo.UserId}
+		}
+		if err := model.DecreaseUserQuota(funding.wallet.userId, delta, false); err != nil {
+			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
+		funding.wallet.consumed += delta
 		return nil
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, int64(delta)); err != nil {
@@ -299,6 +330,15 @@ func (s *BillingSession) rollbackFundingReserve(delta int) {
 			common.SysLog("error rolling back wallet funding reserve: " + err.Error())
 		} else {
 			funding.consumed -= delta
+		}
+	case *SplitFunding:
+		if funding.wallet == nil {
+			return
+		}
+		if err := model.IncreaseUserQuota(funding.wallet.userId, delta, false); err != nil {
+			common.SysLog("error rolling back split wallet funding reserve: " + err.Error())
+		} else {
+			funding.wallet.consumed -= delta
 		}
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
@@ -339,6 +379,12 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 		return false
 	}
 
+	// SplitFunding.Source() looks like wallet until leftover is consumed, which
+	// would skip the wallet half and double-charge on settle.
+	if _, isSplit := s.funding.(*SplitFunding); isSplit {
+		return false
+	}
+
 	switch s.funding.Source() {
 	case BillingSourceWallet:
 		return s.relayInfo.UserQuota > trustQuota
@@ -359,6 +405,25 @@ func (s *BillingSession) syncRelayInfo() {
 	info.FinalPreConsumedQuota = s.preConsumedQuota
 	info.BillingSource = s.funding.Source()
 
+	info.WalletQuotaDeducted = 0
+	if split, ok := s.funding.(*SplitFunding); ok {
+		if split.sub != nil && split.sub.preConsumed > 0 {
+			info.SubscriptionId = split.sub.subscriptionId
+			info.SubscriptionPreConsumed = split.sub.preConsumed
+			info.SubscriptionPostDelta = 0
+			info.SubscriptionAmountTotal = split.sub.AmountTotal
+			info.SubscriptionAmountUsedAfterPreConsume = split.sub.AmountUsedAfter
+			info.SubscriptionPlanId = split.sub.PlanId
+			info.SubscriptionPlanTitle = split.sub.PlanTitle
+		} else {
+			info.SubscriptionId = 0
+			info.SubscriptionPreConsumed = 0
+		}
+		if split.wallet != nil {
+			info.WalletQuotaDeducted = split.wallet.consumed
+		}
+		return
+	}
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
@@ -367,9 +432,12 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionAmountUsedAfterPreConsume = sub.AmountUsedAfter + int64(s.extraReserved)
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
-	} else {
-		info.SubscriptionId = 0
-		info.SubscriptionPreConsumed = 0
+		return
+	}
+	info.SubscriptionId = 0
+	info.SubscriptionPreConsumed = 0
+	if wallet, ok := s.funding.(*WalletFunding); ok {
+		info.WalletQuotaDeducted = wallet.consumed
 	}
 }
 
@@ -385,6 +453,46 @@ func EnsureBillingSessionForChannel(c *gin.Context, relayInfo *relaycommon.Relay
 		return nil
 	}
 	channelBillingType := relayInfo.ChannelMeta.ChannelBillingType
+
+	rebuild := func() *types.NewAPIError {
+		logger.LogInfo(c, fmt.Sprintf("渠道计费类型(%d)与当前计费来源(%s)不符，同步切换计费会话 userId=%d",
+			channelBillingType, relayInfo.BillingSource, relayInfo.UserId))
+
+		// 同步退款当前会话；退款失败时保留原会话状态，交由正常错误清理流程处理
+		if err := relayInfo.Billing.RefundNow(); err != nil {
+			common.SysLog(fmt.Sprintf("EnsureBillingSessionForChannel: 退款失败 userId=%d: %s", relayInfo.UserId, err.Error()))
+			return types.NewError(err, types.ErrorCodePreConsumeTokenQuotaFailed)
+		}
+
+		// 重置 RelayInfo 计费状态。注意：这些字段在 NewBillingSession 成功前就被清零；
+		// 若 NewBillingSession 失败并走错误日志路径，日志中这些字段将显示为零值，属预期行为。
+		relayInfo.Billing = nil
+		relayInfo.BillingSource = ""
+		relayInfo.FinalPreConsumedQuota = 0
+		relayInfo.SubscriptionId = 0
+		relayInfo.SubscriptionPreConsumed = 0
+		relayInfo.SubscriptionPostDelta = 0
+
+		// 重建会话，NewBillingSession 会根据 ChannelMeta.ChannelBillingType 选择正确的来源
+		newSession, apiErr := NewBillingSession(c, relayInfo, originalPreConsumedQuota)
+		if apiErr != nil {
+			return apiErr
+		}
+		relayInfo.Billing = newSession
+		return nil
+	}
+
+	if session, ok := relayInfo.Billing.(*BillingSession); ok {
+		if _, isSplit := session.funding.(*SplitFunding); isSplit {
+			// Split spends both leftover subscription and wallet; only unrestricted
+			// channels may keep it. Source() hides the wallet half.
+			if channelBillingType == model.ChannelBillingTypeAll {
+				return nil
+			}
+			return rebuild()
+		}
+	}
+
 	if channelBillingType == model.ChannelBillingTypeAll {
 		return nil // 渠道无限制
 	}
@@ -398,44 +506,19 @@ func EnsureBillingSessionForChannel(c *gin.Context, relayInfo *relaycommon.Relay
 		return nil // 已与渠道要求相符
 	}
 
-	logger.LogInfo(c, fmt.Sprintf("渠道计费类型(%d)与当前计费来源(%s)不符，同步切换计费会话 userId=%d",
-		channelBillingType, currentSource, relayInfo.UserId))
-
-	// 同步退款当前会话；退款失败时保留原会话状态，交由正常错误清理流程处理
-	if err := relayInfo.Billing.RefundNow(); err != nil {
-		common.SysLog(fmt.Sprintf("EnsureBillingSessionForChannel: 退款失败 userId=%d: %s", relayInfo.UserId, err.Error()))
-		return types.NewError(err, types.ErrorCodePreConsumeTokenQuotaFailed)
-	}
-
-	// 重置 RelayInfo 计费状态。注意：这些字段在 NewBillingSession 成功前就被清零；
-	// 若 NewBillingSession 失败并走错误日志路径，日志中这些字段将显示为零值，属预期行为。
-	relayInfo.Billing = nil
-	relayInfo.BillingSource = ""
-	relayInfo.FinalPreConsumedQuota = 0
-	relayInfo.SubscriptionId = 0
-	relayInfo.SubscriptionPreConsumed = 0
-	relayInfo.SubscriptionPostDelta = 0
-
-	// 重建会话，NewBillingSession 会根据 ChannelMeta.ChannelBillingType 选择正确的来源
-	newSession, apiErr := NewBillingSession(c, relayInfo, originalPreConsumedQuota)
-	if apiErr != nil {
-		return apiErr
-	}
-	relayInfo.Billing = newSession
-	return nil
+	return rebuild()
 }
 
 // ---------------------------------------------------------------------------
-// NewBillingSession 工厂 — 根据计费偏好创建会话并处理回退
+// NewBillingSession 工厂 — 根据 API Key / 渠道计费类型创建会话
 // ---------------------------------------------------------------------------
 
-// NewBillingSession 根据用户计费偏好创建 BillingSession，处理 subscription_first / wallet_first 的回退。
+// NewBillingSession 根据 API Key 与渠道计费类型创建 BillingSession。
+// 优先订阅：先订阅，剩余额度不足时用尽剩余再补钱包，没有可用订阅则走钱包。
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
-
-	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -489,7 +572,60 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
-	// Channel-level billing type takes priority over user preference.
+	trySplit := func(need int) (*BillingSession, *types.NewAPIError) {
+		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		canCover, coverErr := model.CanFullyCoverSubscriptionNeed(relayInfo.UserId, int64(need))
+		if coverErr != nil {
+			return nil, types.NewError(coverErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		walletNeed := need
+		if canCover {
+			walletNeed = 0
+		} else {
+			leftover, unlimited, leftoverErr := model.GetSoonestSubscriptionLeftover(relayInfo.UserId)
+			if leftoverErr != nil {
+				return nil, types.NewError(leftoverErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+			}
+			if unlimited {
+				walletNeed = 0
+			} else if leftover > 0 {
+				if leftover >= int64(need) {
+					walletNeed = 0
+				} else {
+					walletNeed = need - int(leftover)
+				}
+			}
+		}
+		if walletNeed > 0 && userQuota < walletNeed {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("预扣费额度失败, 用户剩余额度: %s, 需要补扣钱包额度: %s", logger.FormatQuota(userQuota), logger.FormatQuota(walletNeed)),
+				types.ErrorCodeInsufficientUserQuota, http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		relayInfo.UserQuota = userQuota
+		session := &BillingSession{
+			relayInfo: relayInfo,
+			funding: &SplitFunding{
+				sub: &SubscriptionFunding{
+					requestId:    relayInfo.RequestId,
+					userId:       relayInfo.UserId,
+					modelName:    relayInfo.OriginModelName,
+					amount:       int64(need),
+					allowPartial: true,
+				},
+				wallet: &WalletFunding{userId: relayInfo.UserId},
+			},
+		}
+		if apiErr := session.preConsume(c, need); apiErr != nil {
+			return nil, apiErr
+		}
+		return session, nil
+	}
+
+	// Channel-level billing type takes priority over the API key.
 	if relayInfo.ChannelMeta == nil {
 		common.SysLog("NewBillingSession called without ChannelMeta; channel billing type will be ignored")
 	} else {
@@ -501,7 +637,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		}
 	}
 
-	// Token-level billing type takes priority over user preference.
 	switch relayInfo.TokenBillingType {
 	case model.ChannelBillingTypeWalletOnly:
 		return tryWallet()
@@ -509,37 +644,47 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return trySubscription()
 	}
 
-	switch pref {
-	case "subscription_only":
-		return trySubscription()
-	case "wallet_only":
+	hasUsable, subCheckErr := model.HasUsableSubscriptionQuota(relayInfo.UserId)
+	if subCheckErr != nil {
+		return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
+	if !hasUsable {
 		return tryWallet()
-	case "wallet_first":
-		session, err := tryWallet()
-		if err != nil {
-			if err.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
-				return trySubscription()
-			}
-			return nil, err
-		}
-		return session, nil
-	case "subscription_first":
-		fallthrough
-	default:
-		hasSub, subCheckErr := model.HasActiveUserSubscription(relayInfo.UserId)
-		if subCheckErr != nil {
-			return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
-		}
-		if !hasSub {
-			return tryWallet()
-		}
+	}
+	need := preConsumedQuota
+	if need <= 0 {
+		need = 1
+	}
+	remain, unlimited, remainErr := model.GetActiveSubscriptionRemaining(relayInfo.UserId)
+	if remainErr != nil {
+		return nil, types.NewError(remainErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
+	if unlimited || remain >= int64(need) {
 		session, apiErr := trySubscription()
 		if apiErr != nil {
 			if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+				// Combined leftover can exceed need while no single sub covers it.
+				if !unlimited {
+					splitSession, splitErr := trySplit(need)
+					if splitErr == nil {
+						return splitSession, nil
+					}
+					if splitErr.GetErrorCode() != types.ErrorCodeInsufficientUserQuota {
+						return nil, splitErr
+					}
+				}
 				return tryWallet()
 			}
 			return nil, apiErr
 		}
 		return session, nil
 	}
+	session, apiErr := trySplit(need)
+	if apiErr != nil {
+		if apiErr.GetErrorCode() == types.ErrorCodeInsufficientUserQuota {
+			return tryWallet()
+		}
+		return nil, apiErr
+	}
+	return session, nil
 }

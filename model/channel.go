@@ -582,7 +582,7 @@ func (channel *Channel) Update() error {
 			}
 		}
 	}
-	// billing_type can be 0 (subscription_first/default) which GORM's Updates(struct) skips as a zero value.
+	// billing_type can be 0 (no restriction) which GORM's Updates(struct) skips as a zero value.
 	// Run both updates inside one transaction so a partial write cannot leave the row inconsistent.
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(channel).Updates(channel).Error; err != nil {

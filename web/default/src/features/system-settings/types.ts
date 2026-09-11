@@ -327,6 +327,20 @@ export type SecuritySettings = {
   'fetch_setting.ip_list': string[]
   'fetch_setting.allowed_ports': number[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
+  'content_review.mode': string
+  'content_review.enabled': boolean
+  'content_review.model': string
+  'content_review.prompt': string
+  'content_review.default_prompt': string
+  'content_review.timeout_ms': number
+  'content_review.max_input_chars': number
+  'content_review.group': string
+  'content_review.flag_enabled': boolean
+  'content_review.flag_threshold': number
+  'content_review.block_enabled': boolean
+  'content_review.block_threshold': number
+  'content_review.fail_open': boolean
+  'content_review.block_message': string
 }
 
 export type UpstreamChannel = {

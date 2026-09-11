@@ -125,10 +125,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.InitChannelMeta(c)
 
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
+	needContentReview := setting.IsContentReviewEnabled() && shouldContentReviewFormat(relayFormat)
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
 	var meta *types.TokenCountMeta
-	if needSensitiveCheck || needCountToken {
+	if needSensitiveCheck || needCountToken || needContentReview {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)
@@ -139,6 +140,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if contains {
 			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
+			return
+		}
+	}
+
+	if needContentReview {
+		if reviewErr := reviewUserPrompt(c, request, meta, relayFormat); reviewErr != nil {
+			newAPIError = reviewErr
 			return
 		}
 	}
@@ -159,6 +167,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
+	if !priceData.FreeModel {
+		changed, refreshErr := refreshChannelSelectionForPreConsume(c, relayInfo, priceData.QuotaToPreConsume)
+		if refreshErr != nil {
+			newAPIError = refreshErr
+			return
+		}
+		if changed {
+			var priceErr error
+			priceData, priceErr = helper.ModelPriceHelper(c, relayInfo, tokens, meta)
+			if priceErr != nil {
+				newAPIError = types.NewError(priceErr, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+				return
+			}
+		}
+	}
 	if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
@@ -299,6 +322,46 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
+// refreshChannelSelectionForPreConsume re-filters 优先订阅 once price is known.
+// Leftover that cannot cover need must not stay on a subscription-only channel.
+// changed is true when a different channel was selected so callers can re-price.
+func refreshChannelSelectionForPreConsume(c *gin.Context, relayInfo *relaycommon.RelayInfo, need int) (bool, *types.NewAPIError) {
+	resolved := service.RefreshEffectiveChannelSelectBillingType(c, need)
+	if relayInfo == nil || relayInfo.ChannelMeta == nil {
+		return false, nil
+	}
+	if _, pinned := c.Get("specific_channel_id"); pinned {
+		return false, nil
+	}
+	if model.IsBillingTypeCompatible(relayInfo.ChannelMeta.ChannelBillingType, resolved) {
+		return false, nil
+	}
+	group := relayInfo.UsingGroup
+	if group == "" {
+		group = relayInfo.TokenGroup
+	}
+	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(&service.RetryParam{
+		Ctx:        c,
+		TokenGroup: group,
+		ModelName:  relayInfo.OriginModelName,
+		Retry:      common.GetPointer(0),
+	})
+	if err != nil {
+		return false, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败: %s", selectGroup, relayInfo.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	if channel == nil {
+		return false, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在", selectGroup, relayInfo.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
+	if apiErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); apiErr != nil {
+		return false, apiErr
+	}
+	relayInfo.InitChannelMeta(c)
+	if relayInfo.ChannelMeta != nil {
+		relayInfo.PriceData.ChannelRatio = relayInfo.ChannelMeta.ChannelRatio
+	}
+	return true, nil
+}
+
 func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
@@ -380,41 +443,53 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
-		// 保存错误日志到mysql中
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		channelId := c.GetInt("channel_id")
-		other := make(map[string]interface{})
-		if c.Request != nil && c.Request.URL != nil {
-			other["request_path"] = c.Request.URL.Path
-		}
-		other["error_type"] = err.GetErrorType()
-		other["error_code"] = err.GetErrorCode()
-		other["status_code"] = err.StatusCode
-		other["channel_id"] = channelId
-		other["channel_name"] = c.GetString("channel_name")
-		other["channel_type"] = c.GetInt("channel_type")
-		adminInfo := make(map[string]interface{})
-		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
-		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
-		if isMultiKey {
-			adminInfo["is_multi_key"] = true
-			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
-		}
-		service.AppendChannelAffinityAdminInfo(c, adminInfo)
-		other["admin_info"] = adminInfo
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	if constant.ErrorLogEnabled {
+		recordRelayErrorLog(c, err, "", nil)
 	}
 
+}
+
+func recordRelayErrorLog(c *gin.Context, err *types.NewAPIError, content string, extra map[string]interface{}) {
+	if c == nil || err == nil || !types.IsRecordErrorLog(err) {
+		return
+	}
+	userId := c.GetInt("id")
+	tokenName := c.GetString("token_name")
+	modelName := c.GetString("original_model")
+	tokenId := c.GetInt("token_id")
+	userGroup := c.GetString("group")
+	channelId := c.GetInt("channel_id")
+	other := make(map[string]interface{})
+	if c.Request != nil && c.Request.URL != nil {
+		other["request_path"] = c.Request.URL.Path
+	}
+	other["error_type"] = err.GetErrorType()
+	other["error_code"] = err.GetErrorCode()
+	other["status_code"] = err.StatusCode
+	other["channel_id"] = channelId
+	other["channel_name"] = c.GetString("channel_name")
+	other["channel_type"] = c.GetInt("channel_type")
+	adminInfo := make(map[string]interface{})
+	adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+	isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
+	if isMultiKey {
+		adminInfo["is_multi_key"] = true
+		adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+	service.AppendChannelAffinityAdminInfo(c, adminInfo)
+	other["admin_info"] = adminInfo
+	for k, v := range extra {
+		other[k] = v
+	}
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = time.Now()
+	}
+	useTimeSeconds := int(time.Since(startTime).Seconds())
+	if content == "" {
+		content = err.MaskSensitiveErrorWithStatusCode()
+	}
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, content, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 }
 
 func RelayMidjourney(c *gin.Context) {

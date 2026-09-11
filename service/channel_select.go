@@ -45,6 +45,91 @@ func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
 }
 
+const ginKeyEffectiveChannelSelectBillingType = "effective_channel_select_billing_type"
+
+// ResolveChannelSelectBillingType maps a token billing type onto the filter used
+// when picking a channel. Token type 0 (优先订阅) still prefers subscription
+// channels when the user has usable subscription quota; without remaining quota
+// it behaves like wallet-only so leftover-zero or missing subscriptions do not
+// land on a subscription-only channel.
+func ResolveChannelSelectBillingType(tokenBillingType int, hasActiveSubscription bool) int {
+	if tokenBillingType == model.ChannelBillingTypeAll && !hasActiveSubscription {
+		return model.ChannelBillingTypeWalletOnly
+	}
+	return tokenBillingType
+}
+
+// EffectiveChannelSelectBillingType returns the billing-type filter for channel
+// selection on this request. The result is cached on the gin context.
+func EffectiveChannelSelectBillingType(c *gin.Context) int {
+	if c == nil {
+		return model.ChannelBillingTypeAll
+	}
+	if cached, exists := c.Get(ginKeyEffectiveChannelSelectBillingType); exists {
+		if n, ok := cached.(int); ok {
+			return n
+		}
+	}
+
+	tokenBillingType := common.GetContextKeyInt(c, constant.ContextKeyTokenBillingType)
+	resolved := tokenBillingType
+	if tokenBillingType == model.ChannelBillingTypeAll {
+		userId := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+		hasSub := false
+		if userId > 0 {
+			var subErr error
+			hasSub, subErr = model.HasUsableSubscriptionQuota(userId)
+			if subErr != nil {
+				// Fail closed to wallet-capable channels so a subscription lookup
+				// error cannot pin the request to a subscription-only channel.
+				common.SysLog("EffectiveChannelSelectBillingType: HasUsableSubscriptionQuota failed: " + subErr.Error())
+				hasSub = false
+			}
+		}
+		resolved = ResolveChannelSelectBillingType(tokenBillingType, hasSub)
+	}
+	c.Set(ginKeyEffectiveChannelSelectBillingType, resolved)
+	return resolved
+}
+
+// RefreshEffectiveChannelSelectBillingType overwrites the cached channel-select
+// filter once the request's pre-consume amount is known. A single subscription
+// must fully cover `need`; combined leftover that requires split is treated as
+// leftover-partial so 优先订阅 does not land on a subscription-only channel.
+func RefreshEffectiveChannelSelectBillingType(c *gin.Context, need int) int {
+	if c == nil {
+		return model.ChannelBillingTypeAll
+	}
+
+	tokenBillingType := common.GetContextKeyInt(c, constant.ContextKeyTokenBillingType)
+	resolved := tokenBillingType
+	if tokenBillingType == model.ChannelBillingTypeAll {
+		userId := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+		canUse := false
+		if userId > 0 {
+			var subErr error
+			if need <= 0 {
+				var remaining int64
+				var unlimited bool
+				remaining, unlimited, subErr = model.GetActiveSubscriptionRemaining(userId)
+				if subErr == nil {
+					canUse = unlimited || remaining > 0
+				}
+			} else {
+				canUse, subErr = model.CanFullyCoverSubscriptionNeed(userId, int64(need))
+			}
+			if subErr != nil {
+				// Fail closed to wallet-capable channels, same as EffectiveChannelSelectBillingType.
+				common.SysLog("RefreshEffectiveChannelSelectBillingType: subscription cover lookup failed: " + subErr.Error())
+				canUse = false
+			}
+		}
+		resolved = ResolveChannelSelectBillingType(tokenBillingType, canUse)
+	}
+	c.Set(ginKeyEffectiveChannelSelectBillingType, resolved)
+	return resolved
+}
+
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
 // 尝试获取一个满足要求的随机渠道。
 //
@@ -85,7 +170,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
-	tokenBillingType := common.GetContextKeyInt(param.Ctx, constant.ContextKeyTokenBillingType)
+	tokenBillingType := EffectiveChannelSelectBillingType(param.Ctx)
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {

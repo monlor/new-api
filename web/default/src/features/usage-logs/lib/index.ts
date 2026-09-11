@@ -29,6 +29,7 @@ export {
   getParamOverrideActionLabel,
   parseAuditLine,
   isViolationFeeLog,
+  localizeContentReviewLogContent,
 } from './format'
 
 // Filter utilities

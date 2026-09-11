@@ -41,6 +41,20 @@ const defaultSecuritySettings: SecuritySettings = {
   'fetch_setting.ip_list': [],
   'fetch_setting.allowed_ports': [],
   'fetch_setting.apply_ip_filter_for_domain': false,
+  'content_review.mode': '',
+  'content_review.enabled': false,
+  'content_review.model': '',
+  'content_review.prompt': '',
+  'content_review.default_prompt': '',
+  'content_review.timeout_ms': 8000,
+  'content_review.max_input_chars': 8000,
+  'content_review.group': '',
+  'content_review.flag_enabled': true,
+  'content_review.flag_threshold': 0.5,
+  'content_review.block_enabled': true,
+  'content_review.block_threshold': 0.8,
+  'content_review.fail_open': true,
+  'content_review.block_message': 'Request blocked by content review',
 }
 
 export function SecuritySettings() {

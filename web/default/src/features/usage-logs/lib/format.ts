@@ -404,3 +404,93 @@ export function renderAuditContent(
   if (!template) return null
   return t(template, (op.params ?? {}) as Record<string, unknown>)
 }
+
+const CONTENT_REVIEW_BLOCKED_LOG =
+  'status_code={{code}}, content review blocked (confidence={{confidence}})'
+const CONTENT_REVIEW_BLOCKED_LOG_WITH_REASON =
+  'status_code={{code}}, content review blocked (confidence={{confidence}}): {{reason}}'
+const CONTENT_REVIEW_UNAVAILABLE_LOG =
+  'status_code={{code}}, content review unavailable, request blocked'
+
+const CONTENT_REVIEW_BLOCKED_RE =
+  /^status_code=(\d+), content review blocked \(confidence=([0-9.]+)\)(?:: (.*))?$/
+const CONTENT_REVIEW_UNAVAILABLE_RE =
+  /^status_code=(\d+), content review unavailable, request blocked$/
+
+type ContentReviewLogParts = {
+  code: string
+  unavailable: boolean
+  confidence?: string
+  reason?: string
+}
+
+function formatReviewConfidence(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return '0.00'
+  return n.toFixed(2)
+}
+
+function parseStoredContentReviewLog(
+  content: string
+): ContentReviewLogParts | null {
+  const unavailable = content.match(CONTENT_REVIEW_UNAVAILABLE_RE)
+  if (unavailable) {
+    return { code: unavailable[1], unavailable: true }
+  }
+  const blocked = content.match(CONTENT_REVIEW_BLOCKED_RE)
+  if (!blocked) return null
+  return {
+    code: blocked[1],
+    unavailable: false,
+    confidence: blocked[2],
+    reason: blocked[3]?.trim() || undefined,
+  }
+}
+
+function resolveContentReviewLogParts(
+  content: string,
+  other: LogOtherData | null | undefined
+): ContentReviewLogParts | null {
+  const parsed = parseStoredContentReviewLog(content)
+  if (!other?.content_review) return parsed
+  if (other.content_review_failed) {
+    return { code: parsed?.code ?? '403', unavailable: true }
+  }
+  const reason = (other.reject_reason || parsed?.reason || '').trim()
+  return {
+    code: parsed?.code ?? '403',
+    unavailable: false,
+    confidence: formatReviewConfidence(
+      other.confidence ?? parsed?.confidence
+    ),
+    reason: reason || undefined,
+  }
+}
+
+/**
+ * Localize a stored content-review error log at display time.
+ * The backend keeps a stable English `content` string; the UI translates
+ * the prefix so existing logs follow the current interface language.
+ */
+export function localizeContentReviewLogContent(
+  content: string,
+  other: LogOtherData | null | undefined,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string | null {
+  const parts = resolveContentReviewLogParts(content, other)
+  if (!parts) return null
+  if (parts.unavailable) {
+    return t(CONTENT_REVIEW_UNAVAILABLE_LOG, { code: parts.code })
+  }
+  if (parts.reason) {
+    return t(CONTENT_REVIEW_BLOCKED_LOG_WITH_REASON, {
+      code: parts.code,
+      confidence: parts.confidence,
+      reason: parts.reason,
+    })
+  }
+  return t(CONTENT_REVIEW_BLOCKED_LOG, {
+    code: parts.code,
+    confidence: parts.confidence,
+  })
+}

@@ -53,6 +53,7 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
   renderAuditContent,
+  localizeContentReviewLogContent,
 } from '../../lib/format'
 import {
   getLogTypeConfig,
@@ -429,8 +430,11 @@ interface DetailsDialogProps {
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
-  const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
+  const details =
+    localizeContentReviewLogContent(props.log.content ?? '', other, t) ??
+    props.log.content ??
+    ''
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -724,8 +728,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {/* Reject reason (admin only) */}
-        {props.isAdmin && other?.reject_reason && (
+        {props.isAdmin && !other?.content_review && other?.reject_reason && (
           <DetailSection
             icon={<AlertTriangle className='size-3.5' aria-hidden='true' />}
             label={t('Reject Reason')}

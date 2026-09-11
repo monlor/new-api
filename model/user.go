@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -52,6 +54,9 @@ type User struct {
 	LinuxDOId            string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting              string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark               string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	HighRisk             bool           `json:"high_risk" gorm:"type:boolean;default:false;index"`
+	HighRiskReason       string         `json:"high_risk_reason,omitempty" gorm:"type:varchar(255)"`
+	HighRiskAt           int64          `json:"high_risk_at,omitempty" gorm:"default:0"`
 	StripeCustomer       string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
 	CreatedAt            int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt          int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
@@ -227,7 +232,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, highRisk *bool, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -246,19 +251,19 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	// 构建基础查询
 	query := tx.Unscoped().Model(&User{})
 
-	// 构建搜索条件
-	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
-	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
+		likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
 
-	// 尝试将关键字转换为整数ID
-	keywordInt, err := strconv.Atoi(keyword)
-	if err == nil {
-		// 如果是数字，同时搜索ID和其他字段
-		likeCondition = "id = ? OR " + likeCondition
-		likeArgs = append([]interface{}{keywordInt}, likeArgs...)
+		keywordInt, convErr := strconv.Atoi(keyword)
+		if convErr == nil {
+			likeCondition = "id = ? OR " + likeCondition
+			likeArgs = append([]interface{}{keywordInt}, likeArgs...)
+		}
+
+		query = query.Where("("+likeCondition+")", likeArgs...)
 	}
-
-	query = query.Where("("+likeCondition+")", likeArgs...)
 	if group != "" {
 		query = query.Where(commonGroupCol+" = ?", group)
 	}
@@ -271,6 +276,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 		} else {
 			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
+	}
+	if highRisk != nil {
+		query = query.Where("high_risk = ?", *highRisk)
 	}
 
 	// 获取总数
@@ -293,6 +301,35 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}
 
 	return users, total, nil
+}
+
+func MarkUserHighRisk(userId int, reason string, confidence float64) error {
+	if userId <= 0 {
+		return nil
+	}
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) > 255 {
+		reason = string([]rune(reason)[:255])
+	}
+	if reason == "" {
+		reason = fmt.Sprintf("content review confidence %.2f", confidence)
+	}
+	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"high_risk":        true,
+		"high_risk_reason": reason,
+		"high_risk_at":     time.Now().Unix(),
+	}).Error
+}
+
+func ClearUserHighRisk(userId int) error {
+	if userId <= 0 {
+		return errors.New("id 为空！")
+	}
+	return DB.Unscoped().Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"high_risk":        false,
+		"high_risk_reason": "",
+		"high_risk_at":     0,
+	}).Error
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {

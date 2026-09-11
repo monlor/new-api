@@ -21,6 +21,11 @@ import { SensitiveWordsSection } from '../request-limits/sensitive-words-section
 import { SSRFSection } from '../request-limits/ssrf-section'
 import type { SecuritySettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import {
+  resolveContentReviewMode,
+  resolveContentReviewPrompt,
+} from './content-review-mode'
+import { ContentReviewSection } from './content-review-section'
 
 const SECURITY_SECTIONS = [
   {
@@ -37,6 +42,35 @@ const SECURITY_SECTIONS = [
             settings.ModelRequestRateLimitDurationMinutes,
           ModelRequestRateLimitGroup: settings.ModelRequestRateLimitGroup,
         }}
+      />
+    ),
+  },
+  {
+    id: 'content-review',
+    titleKey: 'Content Review',
+    build: (settings: SecuritySettings) => (
+      <ContentReviewSection
+        defaultValues={{
+          mode: resolveContentReviewMode(
+            settings['content_review.mode'],
+            settings['content_review.enabled'],
+            settings['content_review.block_enabled']
+          ),
+          model: settings['content_review.model'],
+          prompt: resolveContentReviewPrompt(
+            settings['content_review.prompt'],
+            settings['content_review.default_prompt']
+          ),
+          timeoutMs: settings['content_review.timeout_ms'],
+          maxInputChars: settings['content_review.max_input_chars'],
+          group: settings['content_review.group'],
+          flagEnabled: settings['content_review.flag_enabled'],
+          flagThreshold: settings['content_review.flag_threshold'],
+          blockThreshold: settings['content_review.block_threshold'],
+          failOpen: settings['content_review.fail_open'],
+          blockMessage: settings['content_review.block_message'],
+        }}
+        builtinPrompt={settings['content_review.default_prompt']}
       />
     ),
   },

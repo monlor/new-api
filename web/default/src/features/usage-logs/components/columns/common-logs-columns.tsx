@@ -47,6 +47,7 @@ import {
   parseLogOther,
   isViolationFeeLog,
   renderAuditContent,
+  localizeContentReviewLogContent,
 } from '../../lib/format'
 import {
   isDisplayableLogType,
@@ -110,6 +111,15 @@ function buildDetailSegments(
 
   if (log.type === 6) {
     return [{ text: t('Async task refund') }]
+  }
+
+  const reviewText = localizeContentReviewLogContent(
+    log.content ?? '',
+    other,
+    t
+  )
+  if (reviewText) {
+    return [{ text: reviewText, danger: true }]
   }
 
   if (log.type !== 2) return []

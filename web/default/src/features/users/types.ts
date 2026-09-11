@@ -57,6 +57,9 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
+  high_risk: z.boolean().optional(),
+  high_risk_reason: z.string().optional(),
+  high_risk_at: z.number().optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -95,6 +98,7 @@ export interface SearchUsersParams {
   group?: string
   role?: string
   status?: string
+  high_risk?: string
   p?: number
   page_size?: number
 }
@@ -116,6 +120,7 @@ export type ManageUserAction =
   | 'disable'
   | 'delete'
   | 'add_quota'
+  | 'clear_high_risk'
 
 export type BatchUserAction = 'enable' | 'disable' | 'delete'
 

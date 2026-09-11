@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
@@ -72,6 +73,7 @@ type SubscriptionFunding struct {
 	userId         int
 	modelName      string
 	amount         int64 // 预扣的订阅额度（subConsume）
+	allowPartial   bool  // 无法全额覆盖时消耗剩余额度，供拆分扣费使用
 	subscriptionId int
 	preConsumed    int64
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
@@ -85,7 +87,13 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	var res *model.SubscriptionPreConsumeResult
+	var err error
+	if s.allowPartial {
+		res, err = model.PreConsumeUserSubscriptionUpTo(s.requestId, s.userId, s.modelName, 0, s.amount)
+	} else {
+		res, err = model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount)
+	}
 	if err != nil {
 		return err
 	}
@@ -115,6 +123,114 @@ func (s *SubscriptionFunding) Refund() error {
 	return refundWithRetry(func() error {
 		return model.RefundSubscriptionPreConsume(s.requestId)
 	})
+}
+
+// SplitFunding spends leftover subscription quota first, then wallet for the rest.
+type SplitFunding struct {
+	sub                *SubscriptionFunding
+	wallet             *WalletFunding
+	lastSubSettleDelta int64
+}
+
+func (s *SplitFunding) Source() string {
+	if s != nil && s.sub != nil && s.sub.preConsumed > 0 {
+		return BillingSourceSubscription
+	}
+	return BillingSourceWallet
+}
+
+func (s *SplitFunding) PreConsume(amount int) error {
+	if s.sub == nil {
+		s.sub = &SubscriptionFunding{}
+	}
+	if s.wallet == nil {
+		s.wallet = &WalletFunding{}
+	}
+	if err := s.sub.PreConsume(amount); err != nil {
+		return err
+	}
+	walletNeed := amount - int(s.sub.preConsumed)
+	if walletNeed < 0 {
+		walletNeed = 0
+	}
+	if walletNeed == 0 {
+		return nil
+	}
+	userId := s.wallet.userId
+	if userId <= 0 && s.sub != nil {
+		userId = s.sub.userId
+		s.wallet.userId = userId
+	}
+	quota, err := model.GetUserQuota(userId, true)
+	if err != nil {
+		if refundErr := s.sub.Refund(); refundErr != nil {
+			return fmt.Errorf("wallet quota insufficient: lookup failed: %v; subscription refund failed: %v", err, refundErr)
+		}
+		return err
+	}
+	if quota < walletNeed {
+		if refundErr := s.sub.Refund(); refundErr != nil {
+			return fmt.Errorf("wallet quota insufficient, remaining=%d need=%d; subscription refund failed: %v", quota, walletNeed, refundErr)
+		}
+		return fmt.Errorf("wallet quota insufficient, remaining=%d need=%d", quota, walletNeed)
+	}
+	if err := s.wallet.PreConsume(walletNeed); err != nil {
+		if refundErr := s.sub.Refund(); refundErr != nil {
+			return fmt.Errorf("wallet pre-consume failed: %w; subscription refund failed: %v", err, refundErr)
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *SplitFunding) Settle(delta int) error {
+	s.lastSubSettleDelta = 0
+	if delta == 0 {
+		return nil
+	}
+	if delta > 0 {
+		// Subscription leftover was already taken at pre-consume; extra goes to wallet.
+		if s.wallet == nil {
+			return fmt.Errorf("split funding wallet is nil")
+		}
+		if err := s.wallet.Settle(delta); err != nil {
+			return err
+		}
+		s.wallet.consumed += delta
+		return nil
+	}
+	refund := -delta
+	if s.wallet != nil && s.wallet.consumed > 0 {
+		wRefund := refund
+		if wRefund > s.wallet.consumed {
+			wRefund = s.wallet.consumed
+		}
+		if err := model.IncreaseUserQuota(s.wallet.userId, wRefund, false); err != nil {
+			return err
+		}
+		s.wallet.consumed -= wRefund
+		refund -= wRefund
+	}
+	if refund > 0 && s.sub != nil && s.sub.subscriptionId > 0 {
+		s.lastSubSettleDelta = -int64(refund)
+		return model.PostConsumeUserSubscriptionDelta(s.sub.subscriptionId, -int64(refund))
+	}
+	return nil
+}
+
+func (s *SplitFunding) Refund() error {
+	var walletErr error
+	if s.wallet != nil {
+		walletErr = s.wallet.Refund()
+	}
+	var subErr error
+	if s.sub != nil {
+		subErr = s.sub.Refund()
+	}
+	if walletErr != nil {
+		return walletErr
+	}
+	return subErr
 }
 
 // refundWithRetry 尝试多次执行退款操作以提高成功率，只能用于基于事务的退款函数！！！！！！

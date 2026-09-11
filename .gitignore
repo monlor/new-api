@@ -49,3 +49,4 @@ FORK_SYNC_ASSESSMENT.md
 # newapi-dev orchestrator runtime scratch (local, not versioned)
 .claude/skills/*/_workspace/
 .claude/skills/*/_workspace_prev/
+/_workspace/
