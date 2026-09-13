@@ -23,8 +23,8 @@ import {
   OPENCODE_DEFAULT_OUTPUT,
   OPENCODE_NPM_OPENAI_COMPATIBLE,
   buildOpenCodeConfig,
+  buildOpenCodeConfigParts,
   buildOpenCodeProviderSettings,
-  ensureOpenCodeModelFields,
   filterChatModels,
   getOpenCodeModelLimit,
   isChatModel,
@@ -158,33 +158,47 @@ describe('buildOpenCodeConfig', () => {
   })
 
   test('builds CC Switch settingsConfig with every selected model and limits', () => {
-    const settings = buildOpenCodeProviderSettings({
+    const input = {
       apiKey: 'sk-test',
       baseUrl: 'https://api.example.com',
       providerName: 'New API',
       defaultModel: 'claude-sonnet-4-5',
       smallModel: 'gpt-5.6-luna',
       models: ['claude-sonnet-4-5', 'gpt-5.2-chat-latest', 'gpt-5.6-luna'],
-    })
+    }
+    const { provider, settings, config } = buildOpenCodeConfigParts(input)
+    assert.deepEqual(buildOpenCodeProviderSettings(input), settings)
+    const fullConfig = JSON.parse(buildOpenCodeConfig(input)) as {
+      model: string
+      small_model: string
+      provider: { 'new-api': Record<string, unknown> }
+      npm?: unknown
+      options?: unknown
+    }
+    assert.deepEqual(fullConfig, config)
+    assert.equal(settings.npm, OPENCODE_NPM_OPENAI_COMPATIBLE)
     assert.equal(settings.model, 'new-api/claude-sonnet-4-5')
     assert.equal(settings.small_model, 'new-api/gpt-5.6-luna')
+    assert.equal(config.model, settings.model)
+    assert.equal(config.small_model, settings.small_model)
+    assert.deepEqual(fullConfig.provider['new-api'], provider)
+    assert.equal(provider.model, undefined)
+    assert.equal(provider.small_model, undefined)
+    assert.equal(fullConfig.npm, undefined)
+    assert.equal(fullConfig.options, undefined)
+    assert.equal(settings.$schema, undefined)
+    assert.equal(settings.provider, undefined)
     const options = settings.options as Record<string, unknown>
     assert.equal(options.model, undefined)
     assert.equal(options.small_model, undefined)
-    const ensured = JSON.parse(
-      ensureOpenCodeModelFields(JSON.stringify({ provider: {} }), {
-        providerName: 'New API',
-        defaultModel: 'gpt-4o',
-        smallModel: 'gpt-5.6-luna',
-      })
-    ) as { model: string; small_model: string }
-    assert.equal(ensured.model, 'new-api/gpt-4o')
-    assert.equal(ensured.small_model, 'new-api/gpt-5.6-luna')
+    assert.equal(options.baseURL, 'https://api.example.com/v1')
+    assert.equal(options.apiKey, 'sk-test')
     const models = settings.models as Record<
       string,
       { name: string; limit: { context: number; output: number } }
     >
     assert.equal(settings.npm, OPENCODE_NPM_OPENAI_COMPATIBLE)
+    assert.equal(settings.name, 'New API')
     assert.deepEqual(Object.keys(models), [
       'claude-sonnet-4-5',
       'gpt-5.2-chat-latest',

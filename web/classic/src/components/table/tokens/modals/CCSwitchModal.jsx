@@ -37,7 +37,6 @@ const NON_CHAT_NAME_RE =
 const OPENCODE_DEFAULT_CONTEXT = 200000;
 const OPENCODE_DEFAULT_OUTPUT = 32000;
 const OPENCODE_NPM_OPENAI_COMPATIBLE = '@ai-sdk/openai-compatible';
-const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json';
 const DEFAULT_MODEL_RANK = [
   /claude.*sonnet/,
   /claude.*opus/,
@@ -153,7 +152,7 @@ function pickOpenCodeSmallModel(models, defaultModel) {
   );
 }
 
-function buildOpenCodeConfig({
+function buildOpenCodeProviderSettings({
   apiKey,
   baseUrl,
   providerName,
@@ -162,7 +161,10 @@ function buildOpenCodeConfig({
   models,
 }) {
   const providerId = toOpenCodeProviderId(providerName);
-  const unique = uniqueModels(models, defaultModel);
+  const unique = uniqueModels(
+    [...(models || []), smallModel],
+    defaultModel,
+  );
   const modelEntries = {};
   for (const model of unique) {
     modelEntries[model] = {
@@ -178,24 +180,19 @@ function buildOpenCodeConfig({
       },
     };
   }
-  const config = {
-    $schema: OPENCODE_CONFIG_SCHEMA,
-    provider: {
-      [providerId]: {
-        npm: OPENCODE_NPM_OPENAI_COMPATIBLE,
-        name: providerName || providerId,
-        options: {
-          baseURL: normalizeOpenCodeBaseUrl(baseUrl),
-          apiKey,
-          setCacheKey: true,
-        },
-        models: modelEntries,
-      },
+  const settings = {
+    npm: OPENCODE_NPM_OPENAI_COMPATIBLE,
+    name: providerName || providerId,
+    options: {
+      baseURL: normalizeOpenCodeBaseUrl(baseUrl),
+      apiKey,
+      setCacheKey: true,
     },
+    models: modelEntries,
   };
-  if (defaultModel) config.model = `${providerId}/${defaultModel}`;
-  if (smallModel) config.small_model = `${providerId}/${smallModel}`;
-  return JSON.stringify(config, null, 2);
+  if (defaultModel) settings.model = `${providerId}/${defaultModel}`;
+  if (smallModel) settings.small_model = `${providerId}/${smallModel}`;
+  return settings;
 }
 
 function buildCCSwitchURL(app, name, models, apiKey) {
@@ -287,14 +284,18 @@ export default function CCSwitchModal({
       : `sk-${tokenKey}`;
     const defaultModel =
       opencodeDefaultModel || pickOpenCodeDefaultModel(selected);
-    return buildOpenCodeConfig({
-      apiKey: key,
-      baseUrl: getServerAddress(),
-      providerName: name,
-      defaultModel,
-      smallModel: opencodeSmallModel,
-      models: selected,
-    });
+    return JSON.stringify(
+      buildOpenCodeProviderSettings({
+        apiKey: key,
+        baseUrl: getServerAddress(),
+        providerName: name,
+        defaultModel,
+        smallModel: opencodeSmallModel,
+        models: selected,
+      }),
+      null,
+      2,
+    );
   }, [
     app,
     tokenKey,
@@ -333,7 +334,15 @@ export default function CCSwitchModal({
       }
       const defaultModel =
         opencodeDefaultModel || pickOpenCodeDefaultModel(selected);
-      const url = buildCCSwitchURL(app, name, { model: defaultModel }, key);
+      const url = buildCCSwitchURL(
+        app,
+        name,
+        {
+          model: defaultModel,
+          ...(opencodeSmallModel ? { small_model: opencodeSmallModel } : {}),
+        },
+        key,
+      );
       launchCCSwitch(url);
       if (!opencodeSettingsJson) {
         Toast.error(t('复制失败'));

@@ -38,6 +38,7 @@ export {
   OPENCODE_DEFAULT_OUTPUT,
   OPENCODE_NPM_OPENAI_COMPATIBLE,
   buildOpenCodeConfig,
+  buildOpenCodeConfigParts,
   buildOpenCodeModelEntry,
   buildOpenCodeProviderSettings,
   getOpenCodeModelLimit,
@@ -45,6 +46,16 @@ export {
   pickOpenCodeDefaultModel,
   toOpenCodeProviderId,
   type OpenCodeConfigInput,
+  type OpenCodeConfigParts,
   type OpenCodeModelEntry,
   type OpenCodeModelLimit,
 } from './opencode-config'
+export {
+  PI_API_OPENAI_COMPLETIONS,
+  buildPiModelsJson,
+  buildPiProvider,
+  modelSupportsReasoning,
+  toPiProviderId,
+  type PiConfigInput,
+  type PiModelInput,
+} from './pi-config'

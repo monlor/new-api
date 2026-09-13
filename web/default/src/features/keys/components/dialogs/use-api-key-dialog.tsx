@@ -19,14 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useMemo, useEffect } from 'react'
 import { AlertCircle, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { BundledLanguage } from 'shiki/bundle/web'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import { useChatModels } from '../../hooks/use-chat-models'
-import {
-  buildOpenCodeConfig,
-  ensureOpenCodeModelFields,
-  pickOpenCodeSmallModel,
-} from '../../lib/opencode-config'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
@@ -35,8 +30,13 @@ import {
   CodeBlock,
   CodeBlockCopyButton,
 } from '@/components/ai-elements/code-block'
-import type { BundledLanguage } from 'shiki/bundle/web'
 import { Dialog } from '@/components/dialog'
+import { useChatModels } from '../../hooks/use-chat-models'
+import {
+  buildOpenCodeConfig,
+  pickOpenCodeSmallModel,
+} from '../../lib/opencode-config'
+import { buildPiModelsJson } from '../../lib/pi-config'
 
 type ApiInfoEntry = { id: number; url: string; route: string }
 type ClaudePlatform = 'unix' | 'win-cmd' | 'win-ps'
@@ -137,7 +137,11 @@ function buildCodexAuthJson(apiKey: string): string {
   return JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
 }
 
-function buildCurlCommand(apiKey: string, baseUrl: string, model: string): string {
+function buildCurlCommand(
+  apiKey: string,
+  baseUrl: string,
+  model: string
+): string {
   const effectiveModel = model || 'gpt-4o'
   const body = JSON.stringify({
     model: effectiveModel,
@@ -195,7 +199,10 @@ function InfoBanner(props: { children: React.ReactNode }) {
   )
 }
 
-function SectionLabel(props: { children: React.ReactNode; variant?: 'warning' }) {
+function SectionLabel(props: {
+  children: React.ReactNode
+  variant?: 'warning'
+}) {
   return (
     <div
       className={`flex items-center gap-1.5 text-xs font-medium ${
@@ -265,8 +272,10 @@ export function UseApiKeyDialog(props: Props) {
   const [selectedModel, setSelectedModel] = useState('')
   const [claudePlatform, setClaudePlatform] = useState<ClaudePlatform>('unix')
   const [codexPlatform, setCodexPlatform] = useState<CodexPlatform>('unix')
-  const [opencodePlatform, setOpencodePlatform] = useState<CodexPlatform>('unix')
+  const [opencodePlatform, setOpencodePlatform] =
+    useState<CodexPlatform>('unix')
   const [opencodeSmallModel, setOpencodeSmallModel] = useState('')
+  const [piPlatform, setPiPlatform] = useState<CodexPlatform>('unix')
   const [activeTab, setActiveTab] = useState('claude-code')
 
   const endpointOptions = useMemo(
@@ -288,6 +297,7 @@ export function UseApiKeyDialog(props: Props) {
       setCodexPlatform('unix')
       setOpencodePlatform('unix')
       setOpencodeSmallModel('')
+      setPiPlatform('unix')
       setActiveTab('claude-code')
       setSelectedEndpoint('')
       setSelectedModel('')
@@ -316,7 +326,8 @@ export function UseApiKeyDialog(props: Props) {
         : (chatModels[0] ?? '')
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setOpencodeSmallModel((prev) => {
-      if (prev && chatModels.includes(prev) && prev !== defaultModel) return prev
+      if (prev && chatModels.includes(prev) && prev !== defaultModel)
+        return prev
       return pickOpenCodeSmallModel(chatModels, defaultModel) ?? ''
     })
   }, [chatModels, selectedModel])
@@ -326,16 +337,26 @@ export function UseApiKeyDialog(props: Props) {
     : `sk-${props.tokenKey}`
 
   // selectedEndpoint is always a real string (auto-filled from apiInfoList or server)
-  const effectiveEndpoint = (
-    selectedEndpoint || serverAddress
-  ).replace(/\/$/, '')
+  const effectiveEndpoint = (selectedEndpoint || serverAddress).replace(
+    /\/$/,
+    ''
+  )
 
   // Codex base_url includes /v1
   const codexBaseUrl = `${effectiveEndpoint}/v1`
 
   // Config strings
-  const claudeEnvVars = buildClaudeCodeEnvVars(apiKey, effectiveEndpoint, selectedModel, claudePlatform)
-  const claudeSettings = buildClaudeSettingsJson(apiKey, effectiveEndpoint, selectedModel)
+  const claudeEnvVars = buildClaudeCodeEnvVars(
+    apiKey,
+    effectiveEndpoint,
+    selectedModel,
+    claudePlatform
+  )
+  const claudeSettings = buildClaudeSettingsJson(
+    apiKey,
+    effectiveEndpoint,
+    selectedModel
+  )
   const codexConfigToml = buildCodexConfigToml(codexBaseUrl, selectedModel)
   const codexAuthJson = buildCodexAuthJson(apiKey)
   const curlCommand = buildCurlCommand(apiKey, effectiveEndpoint, selectedModel)
@@ -348,25 +369,25 @@ export function UseApiKeyDialog(props: Props) {
     pickOpenCodeSmallModel(chatModels, opencodeDefault) ||
     ''
   const opencodeModels = Array.from(
-    new Set(
-      [opencodeDefault, opencodeSmall, ...chatModels].filter(Boolean)
-    )
+    new Set([opencodeDefault, opencodeSmall, ...chatModels].filter(Boolean))
   )
-  const opencodeConfig = ensureOpenCodeModelFields(
-    buildOpenCodeConfig({
-      apiKey,
-      baseUrl: effectiveEndpoint,
-      providerName: systemName,
-      defaultModel: opencodeDefault,
-      smallModel: opencodeSmall,
-      models: opencodeModels,
-    }),
-    {
-      providerName: systemName,
-      defaultModel: opencodeDefault,
-      smallModel: opencodeSmall,
-    }
+  const opencodeConfig = buildOpenCodeConfig({
+    apiKey,
+    baseUrl: effectiveEndpoint,
+    providerName: systemName,
+    defaultModel: opencodeDefault,
+    smallModel: opencodeSmall,
+    models: opencodeModels,
+  })
+  const piModels = Array.from(
+    new Set([selectedModel, ...chatModels].filter(Boolean))
   )
+  const piConfig = buildPiModelsJson({
+    apiKey,
+    baseUrl: effectiveEndpoint,
+    providerName: systemName,
+    models: piModels,
+  })
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -387,6 +408,11 @@ export function UseApiKeyDialog(props: Props) {
     opencodePlatform === 'unix'
       ? '~/.config/opencode/opencode.json'
       : '%userprofile%\\.config\\opencode\\opencode.json'
+
+  const piConfigPath =
+    piPlatform === 'unix'
+      ? '~/.pi/agent/models.json'
+      : '%userprofile%\\.pi\\agent\\models.json'
 
   const claudeEnvBlockLabel =
     claudePlatform === 'unix'
@@ -446,6 +472,9 @@ export function UseApiKeyDialog(props: Props) {
           <TabsTrigger value='opencode' className='h-7 px-3 text-xs'>
             OpenCode
           </TabsTrigger>
+          <TabsTrigger value='pi' className='h-7 px-3 text-xs'>
+            Pi
+          </TabsTrigger>
           <TabsTrigger value='curl' className='h-7 px-3 text-xs'>
             cURL
           </TabsTrigger>
@@ -504,7 +533,9 @@ export function UseApiKeyDialog(props: Props) {
           className='mt-0 space-y-0 outline-none'
         >
           <p className='text-muted-foreground py-3 text-xs'>
-            {t('Add the following config files to the Codex CLI config directory.')}
+            {t(
+              'Add the following config files to the Codex CLI config directory.'
+            )}
           </p>
 
           <PlatformTabs
@@ -586,6 +617,44 @@ export function UseApiKeyDialog(props: Props) {
             <InfoBanner>
               {t(
                 'OpenCode registers this as a custom OpenAI-compatible provider. Select the model with /models after restart.'
+              )}
+            </InfoBanner>
+          </div>
+        </TabsContent>
+
+        {/* ── Pi ── */}
+        <TabsContent
+          value='pi'
+          keepMounted
+          className='mt-0 space-y-0 outline-none data-hidden:hidden'
+        >
+          <p className='text-muted-foreground py-3 text-xs'>
+            {t(
+              'Save the following config to the Pi models.json file. Each chat model includes its context and output limits. Image, embedding, video, and audio models are excluded.'
+            )}
+          </p>
+
+          <PlatformTabs
+            value={piPlatform}
+            onChange={setPiPlatform}
+            options={[
+              { value: 'unix', label: 'macOS / Linux' },
+              { value: 'windows', label: 'Windows' },
+            ]}
+          />
+
+          <div className='space-y-4 pt-4'>
+            <WarningBanner>
+              {t(
+                'This file contains your API key. Do not commit it to git. Pi reloads models.json when you open /model.'
+              )}
+            </WarningBanner>
+
+            <FileConfigBlock label={piConfigPath} code={piConfig} lang='json' />
+
+            <InfoBanner>
+              {t(
+                'Pi registers this as a custom OpenAI-compatible provider. After saving, open /model and select a model from this provider.'
               )}
             </InfoBanner>
           </div>

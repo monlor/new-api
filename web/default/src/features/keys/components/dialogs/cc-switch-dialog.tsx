@@ -24,8 +24,7 @@ import { useSystemConfig } from '@/hooks/use-system-config'
 import { useStatus } from '@/hooks/use-status'
 import { useChatModels } from '../../hooks/use-chat-models'
 import {
-  buildOpenCodeConfig,
-  ensureOpenCodeModelFields,
+  buildOpenCodeProviderSettings,
   normalizeOpenCodeBaseUrl,
   pickOpenCodeDefaultModel,
   pickOpenCodeSmallModel,
@@ -200,25 +199,18 @@ export function CCSwitchDialog(props: Props) {
         )
       )
     )
-    try {
-      return ensureOpenCodeModelFields(
-        buildOpenCodeConfig({
-          apiKey: key,
-          baseUrl: selectedEndpoint || serverAddress,
-          providerName: name,
-          defaultModel: opencodeDefaultModel,
-          smallModel: opencodeSmallModel,
-          models,
-        }),
-        {
-          providerName: name,
-          defaultModel: opencodeDefaultModel,
-          smallModel: opencodeSmallModel,
-        }
-      )
-    } catch {
-      return ''
-    }
+    return JSON.stringify(
+      buildOpenCodeProviderSettings({
+        apiKey: key,
+        baseUrl: selectedEndpoint || serverAddress,
+        providerName: name,
+        defaultModel: opencodeDefaultModel,
+        smallModel: opencodeSmallModel,
+        models,
+      }),
+      null,
+      2
+    )
   }, [
     app,
     props.tokenKey,
@@ -284,7 +276,12 @@ export function CCSwitchDialog(props: Props) {
       pickOpenCodeDefaultModel(selectedOpenCodeModels) ||
       selectedOpenCodeModels[0]
     const urlModels =
-      app === 'opencode' ? { model: defaultModel } : models
+      app === 'opencode'
+        ? {
+            model: defaultModel,
+            ...(opencodeSmallModel ? { small_model: opencodeSmallModel } : {}),
+          }
+        : models
     const url = buildCCSwitchURL(
       app,
       name,
@@ -323,7 +320,9 @@ export function CCSwitchDialog(props: Props) {
       contentClassName={app === 'opencode' ? 'sm:max-w-xl' : 'sm:max-w-md'}
       contentHeight='auto'
       bodyClassName={
-        currentConfig.modelFields.length === 1 ? 'space-y-4 pb-52' : 'space-y-4'
+        app === 'opencode' || currentConfig.modelFields.length > 1
+          ? 'space-y-4'
+          : 'space-y-4 pb-52'
       }
       footer={
         <>

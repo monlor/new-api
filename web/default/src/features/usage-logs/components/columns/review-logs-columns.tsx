@@ -24,6 +24,7 @@ import {
   formatTimestampToDate,
   formatTokens,
 } from '@/lib/format'
+import { TruncatedCell } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
 import { getContentReviewDecisionConfig } from '../../lib/review'
@@ -92,6 +93,27 @@ export function useReviewLogsColumns(): ColumnDef<ContentReviewLog>[] {
         )
       },
       size: 110,
+    },
+    {
+      accessorKey: 'reason',
+      header: t('Reason'),
+      cell: ({ row }) => {
+        const reason = row.original.reason?.trim()
+        if (!reason) {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        return (
+          <TruncatedCell
+            className='max-w-[160px] text-xs'
+            tooltipClassName='max-w-sm whitespace-pre-wrap break-words'
+            tooltipContent={reason}
+          >
+            {reason}
+          </TruncatedCell>
+        )
+      },
+      size: 160,
+      meta: { label: t('Reason') },
     },
     {
       accessorKey: 'confidence',

@@ -304,90 +304,29 @@ export function buildOpenCodeModelEntry(model: string): OpenCodeModelEntry {
   }
 }
 
-export function buildOpenCodeConfig(input: OpenCodeConfigInput): string {
+export type OpenCodeConfigParts = {
+  providerId: string
+  provider: Record<string, unknown>
+  /** Provider plus root model / small_model; CC Switch rejects a wrapped `{ provider }` document. */
+  settings: Record<string, unknown>
+  config: Record<string, unknown>
+}
+
+export function buildOpenCodeConfigParts(
+  input: OpenCodeConfigInput
+): OpenCodeConfigParts {
   const providerId = toOpenCodeProviderId(input.providerId || input.providerName)
-  const baseURL = normalizeOpenCodeBaseUrl(input.baseUrl)
-  const models = uniqueModels(input.models, input.defaultModel)
-  const defaultModel = (input.defaultModel || models[0] || '').trim()
+  const models = uniqueModels(
+    [...input.models, input.smallModel || ''],
+    input.defaultModel || ''
+  )
   const modelEntries: Record<string, OpenCodeModelEntry> = {}
   for (const model of models) {
     modelEntries[model] = buildOpenCodeModelEntry(model)
   }
-
-  const config: Record<string, unknown> = {
-    $schema: OPENCODE_CONFIG_SCHEMA,
-    provider: {
-      [providerId]: {
-        npm: OPENCODE_NPM_OPENAI_COMPATIBLE,
-        name: input.providerName || providerId,
-        options: {
-          baseURL,
-          apiKey: input.apiKey,
-          setCacheKey: true,
-        },
-        models: modelEntries,
-      },
-    },
-  }
-
-  if (defaultModel) {
-    config.model = `${providerId}/${defaultModel}`
-  }
-
-  const smallModel = (input.smallModel || '').trim()
-  if (smallModel) {
-    config.small_model = `${providerId}/${smallModel}`
-  }
-
-  return JSON.stringify(config, null, 2)
-}
-
-export function ensureOpenCodeModelFields(
-  configJson: string,
-  input: {
-    providerName: string
-    defaultModel?: string
-    smallModel?: string
-  }
-): string {
-  const parsed = JSON.parse(configJson) as Record<string, unknown>
-  const providerId = toOpenCodeProviderId(input.providerName)
-  const defaultModel = (input.defaultModel || '').trim()
-  const smallModel = (input.smallModel || '').trim()
-  if (defaultModel) parsed.model = `${providerId}/${defaultModel}`
-  else delete parsed.model
-  if (smallModel) parsed.small_model = `${providerId}/${smallModel}`
-  else delete parsed.small_model
-  return JSON.stringify(parsed, null, 2)
-}
-
-export function buildOpenCodeProviderSettings(input: {
-  apiKey: string
-  baseUrl: string
-  providerName: string
-  models: string[]
-  defaultModel?: string
-  smallModel?: string
-}): Record<string, unknown> {
-  // Match CC Switch OpenCodeProviderConfig / official opencode.json provider
-  // entries: npm, name, options.{baseURL,apiKey,setCacheKey}, models[id].{name,limit}.
-  const modelEntries: Record<string, { name: string; limit: OpenCodeModelLimit }> =
-    {}
-  for (const model of uniqueModels(input.models, '')) {
-    modelEntries[model] = {
-      name: model,
-      limit: getOpenCodeModelLimit(model),
-    }
-  }
-  // Official OpenCode config puts `model` / `small_model` at the opencode.json
-  // root as `provider_id/model_id`, not inside provider.options.
-  // https://opencode.ai/docs/config/
-  const providerId = toOpenCodeProviderId(input.providerName)
-  const defaultModel = (input.defaultModel || '').trim()
-  const smallModel = (input.smallModel || '').trim()
-  const settings: Record<string, unknown> = {
+  const provider: Record<string, unknown> = {
     npm: OPENCODE_NPM_OPENAI_COMPATIBLE,
-    name: input.providerName,
+    name: input.providerName || providerId,
     options: {
       baseURL: normalizeOpenCodeBaseUrl(input.baseUrl),
       apiKey: input.apiKey,
@@ -395,7 +334,35 @@ export function buildOpenCodeProviderSettings(input: {
     },
     models: modelEntries,
   }
-  if (defaultModel) settings.model = `${providerId}/${defaultModel}`
-  if (smallModel) settings.small_model = `${providerId}/${smallModel}`
-  return settings
+  const defaultModel = (input.defaultModel || models[0] || '').trim()
+  const smallModel = (input.smallModel || '').trim()
+  const model = defaultModel ? `${providerId}/${defaultModel}` : ''
+  const small_model = smallModel ? `${providerId}/${smallModel}` : ''
+
+  const settings: Record<string, unknown> = { ...provider }
+  const config: Record<string, unknown> = {
+    $schema: OPENCODE_CONFIG_SCHEMA,
+    provider: { [providerId]: provider },
+  }
+  if (model) {
+    settings.model = model
+    config.model = model
+  }
+  if (small_model) {
+    settings.small_model = small_model
+    config.small_model = small_model
+  }
+  return { providerId, provider, settings, config }
 }
+
+export function buildOpenCodeProviderSettings(
+  input: OpenCodeConfigInput
+): Record<string, unknown> {
+  return buildOpenCodeConfigParts(input).settings
+}
+
+export function buildOpenCodeConfig(input: OpenCodeConfigInput): string {
+  return JSON.stringify(buildOpenCodeConfigParts(input).config, null, 2)
+}
+
+
