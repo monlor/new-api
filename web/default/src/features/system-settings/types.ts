@@ -296,6 +296,7 @@ export type OperationsSettings = {
   WorkerValidKey: string
   WorkerAllowHttpImageRequestEnabled: boolean
   LogConsumeEnabled: boolean
+  LogRetentionDays: number
   'performance_setting.disk_cache_enabled': boolean
   'performance_setting.disk_cache_threshold_mb': number
   'performance_setting.disk_cache_max_size_mb': number
@@ -341,6 +342,8 @@ export type SecuritySettings = {
   'content_review.block_threshold': number
   'content_review.fail_open': boolean
   'content_review.block_message': string
+  'content_review.pass_sample_rate': number
+  'content_review.log_input_preview': boolean
 }
 
 export type UpstreamChannel = {

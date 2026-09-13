@@ -36,6 +36,8 @@ func TestDefaultContentReviewPromptCoversOnlineAbuse(t *testing.T) {
 		"虚构角色扮演",
 		"讨论如何应对霸凌",
 		"对 AI 助手的情绪化发泄",
+		"未成年人性内容",
+		"CSAM",
 	} {
 		if !strings.Contains(DefaultContentReviewPrompt, term) {
 			t.Errorf("default prompt missing %q", term)

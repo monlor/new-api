@@ -106,12 +106,14 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - "Use API Key" 弹窗：多工具代码示例
 - API 端点按路由（而非描述）标注
 - code-block 支持额外/未知语言（单例 highlighter）
-- 定价页：按计费类型拆分渠道倍率、可用性过滤、有效倍率徽章、模型卡精简；倍率徽标从名称行移至底部元数据区（避免截断模型名称）
+- 定价页：按计费类型拆分渠道倍率、可用性过滤、有效倍率徽章、模型卡精简；倍率徽标从名称行移至底部元数据区（避免截断模型名称）；模型广场主页卡片不展示动态计费 tag（详情页仍保留）
 - 模型广场价格统一按「基础价 × 分组倍率 × 渠道倍率」展示最低折扣价，移除充值费率价格模式；模型详情默认展示分组折扣价范围，可切换为不含分组/渠道倍率的原价，并覆盖普通、按次与动态计费
 - minimax / speech-0 模型映射到 MiniMax 厂商
 - CC Switch 导入弹窗：新增「API Endpoint 选择器」（基于 status 的 `api_info` 多端点），并将 `homepage`（官网链接）与所选 API endpoint 解耦——`endpoint` 用所选 API 地址，`homepage` 用真实站点地址 `server_address`（上游二者同源，本 fork 拆分后修复了「官网链接=API 链接」的问题）
+- OpenCode 快速导入：Use API Key 弹窗新增 OpenCode 配置（`~/.config/opencode/opencode.json`，按官方自定义供应商字段写入 `@ai-sdk/openai-compatible`、`limit.context` / `limit.output`）；CC Switch 增加 OpenCode 应用导入（endpoint 带 `/v1`，并附带模型上限配置）
+- 创建 API Key 时自动选中第一个可用分组（开启 DefaultUseAutoGroup 且存在 auto 时仍优先 auto）
 
-**涉及文件：** `web/default/src/routes/pricing/index.tsx`、定价/keys 相关前端组件（含 `web/default/src/features/keys/components/dialogs/cc-switch-dialog.tsx`）、`constant/context_key.go`、`common/constants.go`
+**涉及文件：** `web/default/src/routes/pricing/index.tsx`、定价/keys 相关前端组件（含 `web/default/src/features/keys/components/dialogs/{cc-switch-dialog,use-api-key-dialog}.tsx`、`web/default/src/features/keys/lib/opencode-config.ts`、`web/default/src/features/keys/lib/api-key-form.ts`、`web/default/src/features/keys/components/api-keys-mutate-drawer.tsx`）、`web/classic/src/components/table/tokens/modals/{CCSwitchModal,EditTokenModal}.jsx`、`constant/context_key.go`、`common/constants.go`
 
 ## 八、设置与仪表盘 UI (Settings & Dashboard)
 
@@ -180,10 +182,13 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 运行模式线性三档 `off | async | block`（参考 sub2api）：关闭 / 后台审查不挡请求 / 同步拦截当次请求
 - 按置信度阈值标记用户为高风险（用户列表展示/筛选/清除）；仅 block 模式可拦截当次请求
 - 审查失败/超时默认 fail-open；审查调用不向用户计费
-- 默认审查提示词聚焦 cyber abuse、网络虐待（霸凌/骚扰）与人身伤害，其它内容放行；内置词只维护在后端，设置页预填该文本方便修改，「恢复默认」填回内置词
+- 默认审查提示词聚焦 cyber abuse、网络虐待（霸凌/骚扰）与人身伤害（含 CSAM），其它内容放行；内置词只维护在后端，设置页预填该文本方便修改，「恢复默认」填回内置词
 - block 拦截（含 fail-closed）写入使用日志的错误记录（type=error），不依赖 `ERROR_LOG_ENABLED`；含置信度与拦截原因
+- 独立 `content_review_logs`（LOG_DB）：每条审查（pass/flag/block/error）都落库，含审查模型 tokens、预估成本、渠道、耗时；不向用户扣费、不进用量统计
+- 管理员审查日志页 `/usage-logs/review`：筛选判定/模型/用户、统计条、按时间清理（仅 pass 或全部）
+- 现有「清理历史日志」同时删除审查日志；`LogRetentionDays` 按保留天数定时自动清理用量日志与审查日志（0=永久保留）；pass 可配采样率，输入预览默认关闭
 
-**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`model/user.go`、`model/ability.go`、`types/error.go`、`relay/channel/api_request.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/users/**`、`web/default/src/features/usage-logs/**`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/usage-logs/**`、`web/classic/src/pages/Setting/Operation/SettingsLog.jsx`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
 
 ## 十四、文档 (Docs)
 

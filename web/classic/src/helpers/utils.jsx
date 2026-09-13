@@ -955,18 +955,6 @@ export const formatDynamicPriceSummary = (billingExpr, t, groupRatio = 1) => {
       )}
       {(tierCount > 1 || hasTimeCondition || hasRequestCondition) && (
       <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-        <span
-          style={{
-            display: 'inline-block',
-            padding: '1px 6px',
-            borderRadius: 4,
-            fontSize: 11,
-            background: 'var(--semi-color-warning-light-default)',
-            color: 'var(--semi-color-warning)',
-          }}
-        >
-          {t('动态计费')}
-        </span>
         {tags.map((tag) => (
           <span
             key={tag}

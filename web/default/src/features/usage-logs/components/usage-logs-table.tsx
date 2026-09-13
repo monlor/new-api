@@ -55,7 +55,7 @@ function deserializeLogTypeFilter(value: unknown): unknown[] {
 }
 
 interface UsageLogsTableProps {
-  logCategory: LogCategory
+  logCategory: Exclude<LogCategory, 'review'>
 }
 
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {

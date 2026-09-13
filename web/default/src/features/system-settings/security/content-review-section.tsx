@@ -19,9 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import * as z from 'zod'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Link } from '@tanstack/react-router'
 import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,7 +40,6 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
 import {
   SettingsForm,
   SettingsFormGrid,
@@ -69,14 +70,15 @@ const schema = z
     blockThreshold: z.number().min(0).max(1),
     failOpen: z.boolean(),
     blockMessage: z.string(),
+    passSampleRate: z.number().min(0).max(1),
+    logInputPreview: z.boolean(),
   })
   .superRefine((values, ctx) => {
     if (values.mode !== 'off' && values.model.trim() === '') {
       ctx.addIssue({
         code: 'custom',
         path: ['model'],
-        message:
-          'Review model is required when content review is enabled',
+        message: 'Review model is required when content review is enabled',
       })
     }
   })
@@ -96,6 +98,8 @@ const OPTION_KEYS: Record<keyof Values, string> = {
   blockThreshold: 'content_review.block_threshold',
   failOpen: 'content_review.fail_open',
   blockMessage: 'content_review.block_message',
+  passSampleRate: 'content_review.pass_sample_rate',
+  logInputPreview: 'content_review.log_input_preview',
 }
 
 const MODE_OPTIONS: Array<{
@@ -308,7 +312,11 @@ export function ContentReviewSection({
                   </Button>
                 </div>
                 <FormControl>
-                  <Textarea rows={16} disabled={!enabled || saving} {...field} />
+                  <Textarea
+                    rows={16}
+                    disabled={!enabled || saving}
+                    {...field}
+                  />
                 </FormControl>
                 <FormDescription>
                   {t(
@@ -467,6 +475,66 @@ export function ContentReviewSection({
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='passSampleRate'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Pass log sample rate')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={!enabled || saving}
+                    {...safeNumberFieldProps(field)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Fraction of allowed (pass) reviews to store, from 0 to 1. Flagged, blocked, and failed reviews are always stored. Default 1.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='logInputPreview'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Store input preview')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Save a short snippet of allowed (pass) reviews. Flagged, blocked, and failed reviews never store an input preview, including CSAM-classified text. Off by default. Only admins can see it.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={!enabled || saving}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <p className='text-muted-foreground text-sm'>
+            <Link
+              to='/usage-logs/$section'
+              params={{ section: 'review' }}
+              className='text-primary underline-offset-4 hover:underline'
+            >
+              {t('View content review logs')}
+            </Link>
+          </p>
 
           <FormField
             control={form.control}

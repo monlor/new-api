@@ -322,6 +322,14 @@ export const STATIC_I18N_KEYS = [
   'No backup',
   'Generate New Codes',
   'Audio Preview',
+  'All Decisions',
+  'Pass',
+  'Flagged',
+  'Blocked',
+  'Error',
+  'Pass logs only',
+  'All review logs',
+  'Review Logs',
 
   // Status-code risk dialog
   'High-risk status code retry risk check 1',

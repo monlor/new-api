@@ -87,6 +87,39 @@ export function getApiKeyFormDefaultValues(
   }
 }
 
+/**
+ * Pick the group to preselect when creating an API key.
+ * Order is independent of JSON/map key order: keep a valid current group,
+ * then `auto` when requested, then `default`, then the first non-`auto` group.
+ */
+export function pickCreateApiKeyGroup(
+  groups: Array<{ value: string }>,
+  options: {
+    defaultUseAutoGroup?: boolean
+    currentGroup?: string | null
+  } = {}
+): string {
+  const values = groups.map((group) => group.value).filter(Boolean)
+  if (values.length === 0) {
+    return options.currentGroup || ''
+  }
+
+  const currentGroup = options.currentGroup || ''
+  if (currentGroup && values.includes(currentGroup)) {
+    return currentGroup
+  }
+
+  if (options.defaultUseAutoGroup && values.includes('auto')) {
+    return 'auto'
+  }
+
+  if (values.includes('default')) {
+    return 'default'
+  }
+
+  return values.find((value) => value !== 'auto') ?? values[0] ?? ''
+}
+
 // ============================================================================
 // Form Data Transformation
 // ============================================================================

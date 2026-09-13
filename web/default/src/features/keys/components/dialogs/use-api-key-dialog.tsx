@@ -17,11 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getUserModels } from '@/lib/api'
 import { useStatus } from '@/hooks/use-status'
+import { useSystemConfig } from '@/hooks/use-system-config'
+import { useChatModels } from '../../hooks/use-chat-models'
+import {
+  buildOpenCodeConfig,
+  ensureOpenCodeModelFields,
+  pickOpenCodeSmallModel,
+} from '../../lib/opencode-config'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
@@ -249,6 +254,7 @@ interface Props {
 export function UseApiKeyDialog(props: Props) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const { systemName } = useSystemConfig()
 
   const { apiInfoList, serverAddress } = useMemo(
     () => parseApiInfo(status as Record<string, unknown> | null),
@@ -259,6 +265,9 @@ export function UseApiKeyDialog(props: Props) {
   const [selectedModel, setSelectedModel] = useState('')
   const [claudePlatform, setClaudePlatform] = useState<ClaudePlatform>('unix')
   const [codexPlatform, setCodexPlatform] = useState<CodexPlatform>('unix')
+  const [opencodePlatform, setOpencodePlatform] = useState<CodexPlatform>('unix')
+  const [opencodeSmallModel, setOpencodeSmallModel] = useState('')
+  const [activeTab, setActiveTab] = useState('claude-code')
 
   const endpointOptions = useMemo(
     () =>
@@ -269,24 +278,17 @@ export function UseApiKeyDialog(props: Props) {
     [apiInfoList]
   )
 
-  const { data: modelsData } = useQuery({
-    queryKey: ['user-models-use-api-key'],
-    queryFn: getUserModels,
-    enabled: props.open,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const modelOptions = useMemo(() => {
-    const items = modelsData?.data ?? []
-    return items.map((m) => ({ value: m, label: m }))
-  }, [modelsData?.data])
+  const { chatModels, chatModelOptions } = useChatModels(props.open)
 
   // Reset on dialog open; model is left empty so the auto-select effect below
-  // can fill it once modelOptions are ready.
+  // can fill it once chat models are ready.
   useEffect(() => {
     if (props.open) {
       setClaudePlatform('unix')
       setCodexPlatform('unix')
+      setOpencodePlatform('unix')
+      setOpencodeSmallModel('')
+      setActiveTab('claude-code')
       setSelectedEndpoint('')
       setSelectedModel('')
     }
@@ -299,12 +301,25 @@ export function UseApiKeyDialog(props: Props) {
     }
   }, [apiInfoList, selectedEndpoint])
 
-  // Auto-select first model as soon as modelOptions is available and nothing is selected yet
+  // Auto-select first chat model as soon as options are available and nothing is selected yet
   useEffect(() => {
-    if (modelOptions.length > 0 && !selectedModel) {
-      setSelectedModel(modelOptions[0].value)
+    if (chatModelOptions.length > 0 && !selectedModel) {
+      setSelectedModel(chatModelOptions[0].value)
     }
-  }, [modelOptions, selectedModel])
+  }, [chatModelOptions, selectedModel])
+
+  useEffect(() => {
+    if (chatModels.length === 0) return
+    const defaultModel =
+      selectedModel && chatModels.includes(selectedModel)
+        ? selectedModel
+        : (chatModels[0] ?? '')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOpencodeSmallModel((prev) => {
+      if (prev && chatModels.includes(prev) && prev !== defaultModel) return prev
+      return pickOpenCodeSmallModel(chatModels, defaultModel) ?? ''
+    })
+  }, [chatModels, selectedModel])
 
   const apiKey = props.tokenKey.startsWith('sk-')
     ? props.tokenKey
@@ -324,6 +339,34 @@ export function UseApiKeyDialog(props: Props) {
   const codexConfigToml = buildCodexConfigToml(codexBaseUrl, selectedModel)
   const codexAuthJson = buildCodexAuthJson(apiKey)
   const curlCommand = buildCurlCommand(apiKey, effectiveEndpoint, selectedModel)
+  const opencodeDefault =
+    selectedModel && chatModels.includes(selectedModel)
+      ? selectedModel
+      : (chatModels[0] ?? selectedModel)
+  const opencodeSmall =
+    opencodeSmallModel ||
+    pickOpenCodeSmallModel(chatModels, opencodeDefault) ||
+    ''
+  const opencodeModels = Array.from(
+    new Set(
+      [opencodeDefault, opencodeSmall, ...chatModels].filter(Boolean)
+    )
+  )
+  const opencodeConfig = ensureOpenCodeModelFields(
+    buildOpenCodeConfig({
+      apiKey,
+      baseUrl: effectiveEndpoint,
+      providerName: systemName,
+      defaultModel: opencodeDefault,
+      smallModel: opencodeSmall,
+      models: opencodeModels,
+    }),
+    {
+      providerName: systemName,
+      defaultModel: opencodeDefault,
+      smallModel: opencodeSmall,
+    }
+  )
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -339,6 +382,11 @@ export function UseApiKeyDialog(props: Props) {
     codexPlatform === 'unix'
       ? '~/.codex/auth.json'
       : '%userprofile%\\.codex\\auth.json'
+
+  const opencodeConfigPath =
+    opencodePlatform === 'unix'
+      ? '~/.config/opencode/opencode.json'
+      : '%userprofile%\\.config\\opencode\\opencode.json'
 
   const claudeEnvBlockLabel =
     claudePlatform === 'unix'
@@ -377,7 +425,7 @@ export function UseApiKeyDialog(props: Props) {
         <div className='space-y-2'>
           <Label>{t('Model')}</Label>
           <ComboboxInput
-            options={modelOptions}
+            options={chatModelOptions}
             value={selectedModel}
             onValueChange={setSelectedModel}
             placeholder={t('Select or enter model name')}
@@ -387,13 +435,16 @@ export function UseApiKeyDialog(props: Props) {
         </div>
       </div>
 
-      <Tabs defaultValue='claude-code'>
-        <TabsList className='bg-muted/60 gap-1 rounded-lg p-1'>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className='bg-muted/60 flex h-auto flex-wrap gap-1 rounded-lg p-1'>
           <TabsTrigger value='claude-code' className='h-7 px-3 text-xs'>
             Claude Code
           </TabsTrigger>
           <TabsTrigger value='codex' className='h-7 px-3 text-xs'>
             Codex CLI
+          </TabsTrigger>
+          <TabsTrigger value='opencode' className='h-7 px-3 text-xs'>
+            OpenCode
           </TabsTrigger>
           <TabsTrigger value='curl' className='h-7 px-3 text-xs'>
             cURL
@@ -401,7 +452,11 @@ export function UseApiKeyDialog(props: Props) {
         </TabsList>
 
         {/* ── Claude Code ── */}
-        <TabsContent value='claude-code' className='mt-0 space-y-0 outline-none'>
+        <TabsContent
+          value='claude-code'
+          keepMounted
+          className='mt-0 space-y-0 outline-none'
+        >
           <p className='text-muted-foreground py-3 text-xs'>
             {t(
               'Add the following environment variables to your terminal profile or run directly in terminal.'
@@ -443,7 +498,11 @@ export function UseApiKeyDialog(props: Props) {
         </TabsContent>
 
         {/* ── Codex CLI ── */}
-        <TabsContent value='codex' className='mt-0 space-y-0 outline-none'>
+        <TabsContent
+          value='codex'
+          keepMounted
+          className='mt-0 space-y-0 outline-none'
+        >
           <p className='text-muted-foreground py-3 text-xs'>
             {t('Add the following config files to the Codex CLI config directory.')}
           </p>
@@ -478,8 +537,66 @@ export function UseApiKeyDialog(props: Props) {
           </div>
         </TabsContent>
 
+        {/* ── OpenCode ── */}
+        <TabsContent
+          value='opencode'
+          keepMounted
+          className='mt-0 space-y-0 outline-none data-hidden:hidden'
+        >
+          <p className='text-muted-foreground py-3 text-xs'>
+            {t(
+              'Save the following config to the OpenCode config file. Each chat model includes its context and output limits. Image, embedding, video, and audio models are excluded.'
+            )}
+          </p>
+
+          <div className='space-y-2 pb-3'>
+            <Label>{t('Small model')}</Label>
+            <ComboboxInput
+              options={chatModelOptions}
+              value={opencodeSmallModel}
+              onValueChange={setOpencodeSmallModel}
+              placeholder={t('Optional, used for titles')}
+              emptyText={t('No models found')}
+              allowCustomValue
+            />
+          </div>
+
+          <PlatformTabs
+            value={opencodePlatform}
+            onChange={setOpencodePlatform}
+            options={[
+              { value: 'unix', label: 'macOS / Linux' },
+              { value: 'windows', label: 'Windows' },
+            ]}
+          />
+
+          <div className='space-y-4 pt-4'>
+            <WarningBanner>
+              {t(
+                'This file contains your API key. Do not commit it to git. Restart OpenCode after saving.'
+              )}
+            </WarningBanner>
+
+            <FileConfigBlock
+              label={opencodeConfigPath}
+              code={opencodeConfig}
+              lang='json'
+            />
+
+            <InfoBanner>
+              {t(
+                'OpenCode registers this as a custom OpenAI-compatible provider. Select the model with /models after restart.'
+              )}
+            </InfoBanner>
+          </div>
+        </TabsContent>
+
         {/* ── cURL ── */}
-        <TabsContent value='curl' className='mt-4 space-y-3 outline-none'>
+        <TabsContent
+          value='curl'
+          keepMounted
+          className='mt-4 space-y-3 outline-none'
+        >
           <FileConfigBlock label='Shell' code={curlCommand} lang='bash' />
         </TabsContent>
       </Tabs>

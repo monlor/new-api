@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ReactNode, useState, useEffect } from 'react'
+import { type ReactNode, useState, useEffect, type ComponentProps } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -120,12 +120,25 @@ function NavBadge({ children }: { children: ReactNode }) {
  */
 function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
   const { setOpenMobile } = useSidebar()
+  const linkProps = (
+    item.params
+      ? {
+          to: item.url,
+          params: item.params,
+          search: {},
+          onClick: () => setOpenMobile(false),
+        }
+      : {
+          to: item.url,
+          onClick: () => setOpenMobile(false),
+        }
+  ) as ComponentProps<typeof Link>
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
-        render={<Link to={item.url} onClick={() => setOpenMobile(false)} />}
+        render={<Link {...linkProps} />}
       >
         {item.icon && <item.icon className='shrink-0' />}
         <span className='min-w-0 flex-1 truncate'>{item.title}</span>

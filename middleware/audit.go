@@ -93,7 +93,8 @@ var auditRouteActions = map[string]string{
 	"POST /api/subscription/admin/bind":     "subscription.bind",
 
 	// 日志
-	"DELETE /api/log/": "log.clear",
+	"DELETE /api/log/":               "log.clear",
+	"DELETE /api/log/content_review": "log.clear_content_review",
 }
 
 // beginAdminAudit 在管理/root 写操作进入 handler 前包装 ResponseWriter，

@@ -69,6 +69,9 @@ const SECURITY_SECTIONS = [
           blockThreshold: settings['content_review.block_threshold'],
           failOpen: settings['content_review.fail_open'],
           blockMessage: settings['content_review.block_message'],
+          passSampleRate: settings['content_review.pass_sample_rate'] ?? 1,
+          logInputPreview:
+            settings['content_review.log_input_preview'] ?? false,
         }}
         builtinPrompt={settings['content_review.default_prompt']}
       />

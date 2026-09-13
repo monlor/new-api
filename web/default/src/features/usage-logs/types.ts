@@ -28,7 +28,58 @@ import type { UsageLog } from './data/schema'
 /**
  * Log category for different log types
  */
-export type LogCategory = 'common' | 'drawing' | 'task'
+export type LogCategory = 'common' | 'drawing' | 'task' | 'review'
+
+export type ContentReviewDecision = 'pass' | 'flag' | 'block' | 'error'
+
+export interface ContentReviewLog {
+  id: number
+  created_at: number
+  user_id: number
+  username?: string
+  request_id?: string
+  mode?: string
+  decision: ContentReviewDecision | string
+  confidence?: number
+  reason?: string
+  review_model?: string
+  channel?: number
+  channel_name?: string
+  group?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  estimated_quota?: number
+  use_time_ms?: number
+  original_model?: string
+  token_name?: string
+  token_id?: number
+  failed?: boolean
+  fail_message?: string
+  usage_missing?: boolean
+  input_preview?: string
+}
+
+export interface ContentReviewLogFilters extends CommonFilters {
+  decision?: string
+  model?: string
+  username?: string
+  requestId?: string
+}
+
+export interface ContentReviewLogStatistics {
+  total: number
+  pass: number
+  flag: number
+  block: number
+  error: number
+  prompt_tokens: number
+  completion_tokens: number
+  estimated_quota: number
+  avg_confidence: number
+  avg_use_time_ms: number
+  sampled?: boolean
+  pass_sample_rate?: number
+}
 
 // ============================================================================
 // Filter Types
@@ -295,6 +346,35 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+}
+
+export interface GetContentReviewLogsParams {
+  p?: number
+  page_size?: number
+  username?: string
+  model_name?: string
+  start_timestamp?: number
+  end_timestamp?: number
+  channel?: number
+  request_id?: string
+  decision?: string
+}
+
+export interface GetContentReviewLogsResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: ContentReviewLog[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
+export interface GetContentReviewLogsStatResponse {
+  success: boolean
+  message?: string
+  data?: ContentReviewLogStatistics
 }
 
 export interface GetLogsResponse {

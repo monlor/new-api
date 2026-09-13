@@ -6,10 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -62,19 +66,19 @@ func reviewUserPrompt(c *gin.Context, request dto.Request, meta *types.TokenCoun
 		return nil
 	}
 	payload := service.WrapContentReviewInput(text)
-	userId := c.GetInt("id")
 	snap := *cfg
+	logMeta := buildContentReviewLogMeta(c, &snap, text)
 
 	if mode == setting.ContentReviewModeAsync {
 		gopool.Go(func() {
-			if _, err := runContentReviewJob(context.Background(), &snap, userId, payload, false); err != nil {
-				common.SysLog(fmt.Sprintf("async content review failed for user %d: %s", userId, err.Error()))
+			if _, err := runContentReviewJob(context.Background(), &snap, logMeta, payload, false); err != nil {
+				common.SysLog(fmt.Sprintf("async content review failed for user %d: %s", logMeta.UserId, err.Error()))
 			}
 		})
 		return nil
 	}
 
-	result, err := runContentReviewJob(c.Request.Context(), &snap, userId, payload, true)
+	result, err := runContentReviewJob(c.Request.Context(), &snap, logMeta, payload, true)
 	if err != nil {
 		logger.LogWarn(c, fmt.Sprintf("content review failed: %s", err.Error()))
 		if snap.FailOpen {
@@ -155,14 +159,150 @@ type contentReviewJobResult struct {
 	service.ContentReviewDecision
 }
 
-func runContentReviewJob(parent context.Context, cfg *setting.ContentReviewSetting, userId int, payload string, allowBlock bool) (*contentReviewJobResult, error) {
-	content, err := callContentReviewModel(parent, cfg, payload)
+type contentReviewLogMeta struct {
+	UserId        int
+	Username      string
+	RequestId     string
+	OriginalModel string
+	TokenName     string
+	TokenId       int
+	Group         string
+	Mode          string
+	InputPreview  string
+}
+
+type contentReviewModelCall struct {
+	Content          string
+	PromptTokens     int
+	CompletionTokens int
+	EstimatedQuota   int
+	ChannelId        int
+	ReviewModel      string
+	Group            string
+	UseTimeMs        int
+	UsageMissing     bool
+}
+
+func buildContentReviewLogMeta(c *gin.Context, cfg *setting.ContentReviewSetting, text string) contentReviewLogMeta {
+	meta := contentReviewLogMeta{}
+	if c != nil {
+		meta.UserId = c.GetInt("id")
+		meta.Username = c.GetString("username")
+		meta.RequestId = c.GetString(common.RequestIdKey)
+		meta.OriginalModel = c.GetString("original_model")
+		meta.TokenName = c.GetString("token_name")
+		meta.TokenId = c.GetInt("token_id")
+		meta.Group = c.GetString("group")
+	}
+	if cfg != nil {
+		meta.Mode = cfg.ReviewMode()
+		if cfg.LogInputPreview {
+			meta.InputPreview = truncateContentReviewPreview(text)
+		}
+	}
+	if meta.Username == "" && meta.UserId > 0 {
+		meta.Username, _ = model.GetUsernameById(meta.UserId, false)
+	}
+	return meta
+}
+
+func truncateContentReviewPreview(text string) string {
+	const maxRunes = 200
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(text) <= maxRunes {
+		return text
+	}
+	return string([]rune(text)[:maxRunes])
+}
+
+func shouldRecordContentReviewLog(decision string, passSampleRate float64) bool {
+	if decision != model.ContentReviewDecisionPass {
+		return true
+	}
+	if passSampleRate <= 0 {
+		return false
+	}
+	if passSampleRate >= 1 {
+		return true
+	}
+	return rand.Float64() < passSampleRate
+}
+
+func contentReviewDecisionName(decision service.ContentReviewDecision, failed bool) string {
+	if failed {
+		return model.ContentReviewDecisionError
+	}
+	if decision.ShouldBlock {
+		return model.ContentReviewDecisionBlock
+	}
+	if decision.ShouldFlag {
+		return model.ContentReviewDecisionFlag
+	}
+	return model.ContentReviewDecisionPass
+}
+
+func recordContentReviewObservabilityLog(meta contentReviewLogMeta, cfg *setting.ContentReviewSetting, parsed *service.ContentReviewResult, decision service.ContentReviewDecision, call *contentReviewModelCall, reviewErr error) {
+	decisionName := contentReviewDecisionName(decision, parsed == nil || reviewErr != nil)
+	sampleRate := 1.0
+	if cfg != nil {
+		sampleRate = cfg.ReviewPassSampleRate()
+	}
+	if !shouldRecordContentReviewLog(decisionName, sampleRate) {
+		return
+	}
+	log := &model.ContentReviewLog{
+		UserId:        meta.UserId,
+		Username:      meta.Username,
+		RequestId:     meta.RequestId,
+		Mode:          meta.Mode,
+		Decision:      decisionName,
+		OriginalModel: meta.OriginalModel,
+		TokenName:     meta.TokenName,
+		TokenId:       meta.TokenId,
+		Group:         meta.Group,
+		InputPreview:  meta.InputPreview,
+		Failed:        decisionName == model.ContentReviewDecisionError,
+	}
+	if parsed != nil {
+		log.Confidence = parsed.Confidence
+		log.Reason = truncateContentReviewReason(parsed.Reason)
+	}
+	if decisionName != model.ContentReviewDecisionPass {
+		log.InputPreview = ""
+	}
+	if call != nil {
+		log.ReviewModel = call.ReviewModel
+		log.ChannelId = call.ChannelId
+		log.PromptTokens = call.PromptTokens
+		log.CompletionTokens = call.CompletionTokens
+		log.EstimatedQuota = call.EstimatedQuota
+		log.UseTimeMs = call.UseTimeMs
+		log.UsageMissing = call.UsageMissing
+		if log.Group == "" {
+			log.Group = call.Group
+		}
+	} else if cfg != nil {
+		log.ReviewModel = strings.TrimSpace(cfg.Model)
+	}
+	if reviewErr != nil {
+		log.FailMessage = truncateContentReviewReason(common.MaskSensitiveInfo(reviewErr.Error()))
+	}
+	model.RecordContentReviewLog(log)
+}
+
+func runContentReviewJob(parent context.Context, cfg *setting.ContentReviewSetting, meta contentReviewLogMeta, payload string, allowBlock bool) (*contentReviewJobResult, error) {
+	call, err := callContentReviewModel(parent, cfg, payload)
 	if err != nil {
+		recordContentReviewObservabilityLog(meta, cfg, nil, service.ContentReviewDecision{}, call, err)
 		return nil, err
 	}
-	parsed, err := service.ParseContentReviewResult(content)
-	if err != nil {
-		return nil, err
+	parsed, parseErr := service.ParseContentReviewResult(call.Content)
+	if parseErr != nil {
+		recordContentReviewObservabilityLog(meta, cfg, nil, service.ContentReviewDecision{}, call, parseErr)
+		return nil, parseErr
 	}
 	decision := service.DecideContentReview(
 		parsed,
@@ -172,48 +312,141 @@ func runContentReviewJob(parent context.Context, cfg *setting.ContentReviewSetti
 		cfg.ReviewBlockThreshold(),
 	)
 	if decision.ShouldFlag {
-		if markErr := model.MarkUserHighRisk(userId, parsed.Reason, parsed.Confidence); markErr != nil {
-			common.SysLog(fmt.Sprintf("failed to mark user %d as high risk: %s", userId, markErr.Error()))
+		if markErr := model.MarkUserHighRisk(meta.UserId, parsed.Reason, parsed.Confidence); markErr != nil {
+			common.SysLog(fmt.Sprintf("failed to mark user %d as high risk: %s", meta.UserId, markErr.Error()))
 		} else {
-			common.SysLog(fmt.Sprintf("content review flagged user %d: confidence=%.2f reason=%s", userId, parsed.Confidence, parsed.Reason))
+			common.SysLog(fmt.Sprintf("content review flagged user %d: confidence=%.2f reason=%s", meta.UserId, parsed.Confidence, parsed.Reason))
 		}
 	}
+	recordContentReviewObservabilityLog(meta, cfg, &parsed, decision, call, nil)
 	return &contentReviewJobResult{ContentReviewResult: parsed, ContentReviewDecision: decision}, nil
 }
 
-func callContentReviewModel(parent context.Context, cfg *setting.ContentReviewSetting, userPayload string) (string, error) {
+const contentReviewTimeoutDrain = 100 * time.Millisecond
+
+type contentReviewCallOutcome struct {
+	call *contentReviewModelCall
+	err  error
+}
+
+type contentReviewCallSlot struct {
+	mu   sync.Mutex
+	call contentReviewModelCall
+	ok   bool
+}
+
+func (s *contentReviewCallSlot) store(call *contentReviewModelCall) {
+	if s == nil || call == nil {
+		return
+	}
+	s.mu.Lock()
+	s.call = *call
+	s.ok = true
+	s.mu.Unlock()
+}
+
+func (s *contentReviewCallSlot) load() *contentReviewModelCall {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.ok {
+		return nil
+	}
+	cp := s.call
+	return &cp
+}
+
+func newContentReviewModelCall(cfg *setting.ContentReviewSetting) *contentReviewModelCall {
+	modelName := ""
+	if cfg != nil {
+		modelName = strings.TrimSpace(cfg.Model)
+	}
+	return &contentReviewModelCall{
+		ReviewModel:  modelName,
+		UsageMissing: true,
+	}
+}
+
+func coalesceContentReviewCall(call, fallback *contentReviewModelCall) *contentReviewModelCall {
+	if call != nil {
+		return call
+	}
+	return fallback
+}
+
+func waitContentReviewCallResult(ctx context.Context, ch <-chan contentReviewCallOutcome, slot *contentReviewCallSlot, fallback *contentReviewModelCall) (*contentReviewModelCall, error) {
+	latest := func() *contentReviewModelCall {
+		return coalesceContentReviewCall(slot.load(), fallback)
+	}
+	select {
+	case out := <-ch:
+		return coalesceContentReviewCall(out.call, latest()), out.err
+	default:
+	}
+	select {
+	case out := <-ch:
+		return coalesceContentReviewCall(out.call, latest()), out.err
+	case <-ctx.Done():
+		timer := time.NewTimer(contentReviewTimeoutDrain)
+		defer timer.Stop()
+		select {
+		case out := <-ch:
+			if out.err == nil {
+				return coalesceContentReviewCall(out.call, latest()), nil
+			}
+			return coalesceContentReviewCall(out.call, latest()), ctx.Err()
+		case <-timer.C:
+			return latest(), ctx.Err()
+		}
+	}
+}
+
+func callContentReviewModel(parent context.Context, cfg *setting.ContentReviewSetting, userPayload string) (*contentReviewModelCall, error) {
 	timeout := cfg.ReviewTimeout()
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	type outcome struct {
-		content string
-		err     error
-	}
-	ch := make(chan outcome, 1)
+	slot := &contentReviewCallSlot{}
+	fallback := newContentReviewModelCall(cfg)
+	slot.store(fallback)
+	ch := make(chan contentReviewCallOutcome, 1)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				ch <- outcome{err: fmt.Errorf("content review panic: %v", r)}
+				ch <- contentReviewCallOutcome{err: fmt.Errorf("content review panic: %v", r)}
 			}
 		}()
-		content, err := callContentReviewModelOnce(ctx, cfg, userPayload)
-		ch <- outcome{content, err}
+		call, err := callContentReviewModelOnce(ctx, cfg, userPayload, slot.store)
+		ch <- contentReviewCallOutcome{call, err}
 	}()
-	select {
-	case <-ctx.Done():
-		return "", ctx.Err()
-	case out := <-ch:
-		return out.content, out.err
-	}
+	return waitContentReviewCallResult(ctx, ch, slot, fallback)
 }
 
-func callContentReviewModelOnce(ctx context.Context, cfg *setting.ContentReviewSetting, userPayload string) (string, error) {
-	modelName := strings.TrimSpace(cfg.Model)
+func callContentReviewModelOnce(ctx context.Context, cfg *setting.ContentReviewSetting, userPayload string, report func(*contentReviewModelCall)) (*contentReviewModelCall, error) {
+	started := time.Now()
+	call := newContentReviewModelCall(cfg)
+	publish := func() {
+		if report != nil {
+			report(call)
+		}
+	}
+	defer func() {
+		if call != nil && call.UseTimeMs == 0 {
+			call.UseTimeMs = int(time.Since(started).Milliseconds())
+		}
+		publish()
+	}()
+	publish()
+	modelName := call.ReviewModel
 	channel, group, err := model.GetEnabledChannelByModel(modelName, cfg.Group)
 	if err != nil {
-		return "", err
+		return call, err
 	}
+	call.ChannelId = channel.Id
+	call.Group = group
+	publish()
 
 	w := httptest.NewRecorder()
 	reviewCtx, _ := gin.CreateTestContext(w)
@@ -227,22 +460,23 @@ func callContentReviewModelOnce(ctx context.Context, cfg *setting.ContentReviewS
 
 	testUserID, userErr := resolveChannelTestUserID(nil)
 	if userErr != nil {
-		return "", userErr
+		return call, userErr
 	}
 	cache, cacheErr := model.GetUserCache(testUserID)
 	if cacheErr != nil {
-		return "", cacheErr
+		return call, cacheErr
 	}
 	cache.WriteContext(reviewCtx)
 	reviewCtx.Set("id", testUserID)
 	if group == "" {
 		group, _ = model.GetUserGroup(testUserID, false)
 	}
+	call.Group = group
 	reviewCtx.Set("group", group)
 	common.SetContextKey(reviewCtx, constant.ContextKeyUsingGroup, group)
 
 	if setupErr := middleware.SetupContextForSelectedChannel(reviewCtx, channel, modelName); setupErr != nil {
-		return "", setupErr
+		return call, setupErr
 	}
 
 	maxTokens := uint(512)
@@ -263,67 +497,78 @@ func callContentReviewModelOnce(ctx context.Context, cfg *setting.ContentReviewS
 
 	info, genErr := relaycommon.GenRelayInfo(reviewCtx, types.RelayFormatOpenAI, req, nil)
 	if genErr != nil {
-		return "", genErr
+		return call, genErr
 	}
 	info.IsChannelTest = true
 	info.InitChannelMeta(reviewCtx)
 
 	if mapErr := helper.ModelMappedHelper(reviewCtx, info, req); mapErr != nil {
-		return "", mapErr
+		return call, mapErr
 	}
 	req.SetModelName(info.UpstreamModelName)
 
 	apiType, _ := common.ChannelType2APIType(channel.Type)
 	adaptor := relay.GetAdaptor(apiType)
 	if adaptor == nil {
-		return "", fmt.Errorf("invalid api type: %d", apiType)
+		return call, fmt.Errorf("invalid api type: %d", apiType)
 	}
 	adaptor.Init(info)
 
 	convertedRequest, convErr := adaptor.ConvertOpenAIRequest(reviewCtx, info, req)
 	if convErr != nil {
-		return "", convErr
+		return call, convErr
 	}
 	jsonData, marshalErr := common.Marshal(convertedRequest)
 	if marshalErr != nil {
-		return "", marshalErr
+		return call, marshalErr
 	}
 	if len(info.ParamOverride) > 0 {
 		jsonData, marshalErr = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if marshalErr != nil {
-			return "", marshalErr
+			return call, marshalErr
 		}
 	}
 
 	reviewCtx.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 	resp, doErr := adaptor.DoRequest(reviewCtx, info, bytes.NewBuffer(jsonData))
 	if doErr != nil {
-		return "", doErr
+		return call, doErr
 	}
 	var httpResp *http.Response
 	if resp != nil {
 		typedResp, ok := resp.(*http.Response)
 		if !ok {
-			return "", errors.New("unexpected review response type")
+			return call, errors.New("unexpected review response type")
 		}
 		httpResp = typedResp
 		if httpResp.StatusCode != http.StatusOK {
 			relayErr := service.RelayErrorHandler(ctx, httpResp, true)
 			if relayErr != nil {
-				return "", relayErr
+				return call, relayErr
 			}
-			return "", fmt.Errorf("review model status %d", httpResp.StatusCode)
+			return call, fmt.Errorf("review model status %d", httpResp.StatusCode)
 		}
 	}
 
-	if _, respErr := adaptor.DoResponse(reviewCtx, httpResp, info); respErr != nil {
-		return "", respErr
+	usageAny, respErr := adaptor.DoResponse(reviewCtx, httpResp, info)
+	if respErr != nil {
+		return call, respErr
 	}
 	content := extractReviewModelContent(w.Body.Bytes())
 	if content == "" {
-		return "", errors.New("empty review model content")
+		return call, errors.New("empty review model content")
 	}
-	return content, nil
+	call.Content = content
+	usage, usageErr := coerceTestUsage(usageAny, false, info.GetEstimatePromptTokens())
+	if usageErr == nil && usage != nil {
+		call.PromptTokens = usage.PromptTokens
+		call.CompletionTokens = usage.CompletionTokens
+		call.UsageMissing = false
+		if priceData, priceErr := helper.ModelPriceHelper(reviewCtx, info, usage.PromptTokens, req.GetTokenCountMeta()); priceErr == nil {
+			call.EstimatedQuota, _ = settleTestQuota(info, priceData, usage)
+		}
+	}
+	return call, nil
 }
 
 func extractReviewModelContent(body []byte) string {

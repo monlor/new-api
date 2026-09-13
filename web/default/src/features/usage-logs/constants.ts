@@ -20,7 +20,11 @@ For commercial licensing, please contact support@quantumnous.com
  * Shared constants for usage logs feature
  */
 import type { StatusBadgeProps } from '@/components/status-badge'
-import type { LogStatistics, LogCategory } from './types'
+import type {
+  LogStatistics,
+  LogCategory,
+  ContentReviewLogStatistics,
+} from './types'
 
 // ============================================================================
 // Default Values
@@ -336,6 +340,30 @@ export const LOG_CATEGORY_LABELS: Record<LogCategory, string> = {
   common: 'Common',
   drawing: 'Drawing',
   task: 'Task',
+  review: 'Review',
+}
+
+export const CONTENT_REVIEW_DECISIONS = [
+  { value: 'all', label: 'All Decisions' },
+  { value: 'pass', label: 'Pass' },
+  { value: 'flag', label: 'Flagged' },
+  { value: 'block', label: 'Blocked' },
+  { value: 'error', label: 'Error' },
+] as const
+
+export const DEFAULT_CONTENT_REVIEW_STATS: ContentReviewLogStatistics = {
+  total: 0,
+  pass: 0,
+  flag: 0,
+  block: 0,
+  error: 0,
+  prompt_tokens: 0,
+  completion_tokens: 0,
+  estimated_quota: 0,
+  avg_confidence: 0,
+  avg_use_time_ms: 0,
+  sampled: false,
+  pass_sample_rate: 1,
 }
 
 // ============================================================================

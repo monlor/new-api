@@ -16,15 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { useIsAdmin } from '@/hooks/use-admin'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
+import { ReviewLogsTable } from './components/review-logs-table'
 import {
   UsageLogsProvider,
   useUsageLogsContext,
@@ -49,16 +51,26 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   task: {
     titleKey: 'Task Logs',
   },
+  review: {
+    titleKey: 'Review Logs',
+  },
 }
 
 function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const isAdmin = useIsAdmin()
   const params = route.useParams()
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
       : USAGE_LOGS_DEFAULT_SECTION
+
+  useEffect(() => {
+    if (activeCategory === 'review' && !isAdmin) {
+      void navigate({ to: '/403', replace: true })
+    }
+  }, [activeCategory, isAdmin, navigate])
   const {
     selectedUserId,
     userInfoDialogOpen,
@@ -103,10 +115,11 @@ function UsageLogsContent() {
     [navigate]
   )
 
-  const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
+  const pageMeta = SECTION_META[activeCategory] ?? SECTION_META.common
   const showTaskSwitcher =
-    activeCategory !== 'common' && visibleSections.length > 1
+    activeCategory !== 'common' &&
+    activeCategory !== 'review' &&
+    visibleSections.length > 1
 
   return (
     <>
@@ -128,7 +141,11 @@ function UsageLogsContent() {
               </Tabs>
             )}
             <div className='min-h-0 flex-1'>
-              <UsageLogsTable logCategory={activeCategory} />
+              {activeCategory === 'review' ? (
+                <ReviewLogsTable />
+              ) : (
+                <UsageLogsTable logCategory={activeCategory} />
+              )}
             </div>
           </div>
         </SectionPageLayout.Content>

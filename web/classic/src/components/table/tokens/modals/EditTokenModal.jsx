@@ -59,6 +59,24 @@ import { StatusContext } from '../../../../context/Status';
 
 const { Text, Title } = Typography;
 
+function pickCreateApiKeyGroup(groups, options = {}) {
+  const values = (groups || []).map((group) => group.value).filter(Boolean);
+  if (values.length === 0) {
+    return options.currentGroup || '';
+  }
+  const currentGroup = options.currentGroup || '';
+  if (currentGroup && values.includes(currentGroup)) {
+    return currentGroup;
+  }
+  if (options.defaultUseAutoGroup && values.includes('auto')) {
+    return 'auto';
+  }
+  if (values.includes('default')) {
+    return 'default';
+  }
+  return values.find((value) => value !== 'auto') ?? values[0] ?? '';
+}
+
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
   const [statusState, statusDispatch] = useContext(StatusContext);
@@ -148,9 +166,14 @@ const EditTokenModal = (props) => {
         }
       }
       setGroups(localGroupOptions);
-      // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
-      //   formApiRef.current.setValue('group', 'auto');
-      // }
+      if (!isEdit && formApiRef.current && localGroupOptions.length > 0) {
+        const nextGroup = pickCreateApiKeyGroup(localGroupOptions, {
+          defaultUseAutoGroup: !!statusState?.status?.default_use_auto_group,
+        });
+        if (nextGroup) {
+          formApiRef.current.setValue('group', nextGroup);
+        }
+      }
     } else {
       showError(t(message));
     }
@@ -184,7 +207,14 @@ const EditTokenModal = (props) => {
   useEffect(() => {
     if (formApiRef.current) {
       if (!isEdit) {
-        formApiRef.current.setValues(getInitValues());
+        const initValues = getInitValues();
+        if (groups.length > 0) {
+          initValues.group = pickCreateApiKeyGroup(groups, {
+            defaultUseAutoGroup:
+              !!statusState?.status?.default_use_auto_group,
+          });
+        }
+        formApiRef.current.setValues(initValues);
       }
     }
     loadModels();
@@ -196,7 +226,14 @@ const EditTokenModal = (props) => {
       if (isEdit) {
         loadToken();
       } else {
-        formApiRef.current?.setValues(getInitValues());
+        const initValues = getInitValues();
+        if (groups.length > 0) {
+          initValues.group = pickCreateApiKeyGroup(groups, {
+            defaultUseAutoGroup:
+              !!statusState?.status?.default_use_auto_group,
+          });
+        }
+        formApiRef.current?.setValues(initValues);
       }
     } else {
       formApiRef.current?.reset();
@@ -353,7 +390,15 @@ const EditTokenModal = (props) => {
       <Spin spinning={loading}>
         <Form
           key={isEdit ? 'edit' : 'new'}
-          initValues={getInitValues()}
+          initValues={{
+            ...getInitValues(),
+            group: !isEdit
+              ? pickCreateApiKeyGroup(groups, {
+                  defaultUseAutoGroup:
+                    !!statusState?.status?.default_use_auto_group,
+                })
+              : '',
+          }}
           getFormApi={(api) => (formApiRef.current = api)}
           onSubmit={submit}
         >

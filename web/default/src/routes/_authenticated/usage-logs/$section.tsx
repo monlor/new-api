@@ -23,6 +23,8 @@ import {
   isUsageLogsSectionId,
   USAGE_LOGS_DEFAULT_SECTION,
 } from '@/features/usage-logs/section-registry'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 
 const logTypeValues = ['0', '1', '2', '3', '4', '5', '6', '7'] as const
 const logTypeSearchSchema = z
@@ -47,6 +49,7 @@ const usageLogsSearchSchema = z.object({
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
+  decision: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
 })
@@ -59,6 +62,12 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
     }
+    if (params.section === 'review') {
+      const { auth } = useAuthStore.getState()
+      if (!auth.user || auth.user.role < ROLE.ADMIN) {
+        throw redirect({ to: '/403' })
+      }
+    }
     // type 仅 common 使用，非 common 时清掉 URL 里的 type
     const hasTypeSearch = Array.isArray(search?.type)
       ? search.type.length > 0
@@ -68,6 +77,14 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         to: '/usage-logs/$section',
         params: { section: params.section },
         search: { ...search, type: undefined },
+        replace: true,
+      })
+    }
+    if (params.section !== 'review' && search?.decision) {
+      throw redirect({
+        to: '/usage-logs/$section',
+        params: { section: params.section },
+        search: { ...search, decision: undefined },
         replace: true,
       })
     }

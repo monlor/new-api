@@ -46,6 +46,7 @@ export default function SettingsLog(props) {
   const [loadingCleanHistoryLog, setLoadingCleanHistoryLog] = useState(false);
   const [inputs, setInputs] = useState({
     LogConsumeEnabled: false,
+    LogRetentionDays: 0,
     historyTimestamp: dayjs().subtract(1, 'month').toDate(),
   });
   const refForm = useRef();
@@ -60,6 +61,8 @@ export default function SettingsLog(props) {
     const requestQueue = updateArray.map((item) => {
       let value = '';
       if (typeof inputs[item.key] === 'boolean') {
+        value = String(inputs[item.key]);
+      } else if (typeof inputs[item.key] === 'number') {
         value = String(inputs[item.key]);
       } else {
         value = inputs[item.key];
@@ -183,7 +186,11 @@ export default function SettingsLog(props) {
     const currentInputs = {};
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+        if (key === 'LogRetentionDays') {
+          currentInputs[key] = Number(props.options[key]) || 0;
+        } else {
+          currentInputs[key] = props.options[key];
+        }
       }
     }
     currentInputs['historyTimestamp'] = inputs.historyTimestamp;
@@ -217,6 +224,23 @@ export default function SettingsLog(props) {
                 />
               </Col>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'LogRetentionDays'}
+                  label={t('日志保留天数')}
+                  min={0}
+                  step={1}
+                  extraText={t(
+                    '超过该天数的用量日志和内容审查日志会自动删除，0 表示永久保留',
+                  )}
+                  onChange={(value) => {
+                    setInputs({
+                      ...inputs,
+                      LogRetentionDays: Number(value) || 0,
+                    });
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Spin spinning={loadingCleanHistoryLog}>
                   <Form.DatePicker
                     label={t('清除历史日志')}
@@ -235,7 +259,7 @@ export default function SettingsLog(props) {
                     size='small'
                     style={{ display: 'block', marginTop: 4, marginBottom: 8 }}
                   >
-                    {t('将清除选定时间之前的所有日志')}
+                    {t('将清除选定时间之前的用量日志和内容审查日志')}
                   </Text>
                   <Button
                     size='default'

@@ -25,6 +25,9 @@ import type {
   GetLogStatsResponse,
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
+  GetContentReviewLogsParams,
+  GetContentReviewLogsResponse,
+  GetContentReviewLogsStatResponse,
   UserInfo,
 } from './types'
 
@@ -109,3 +112,35 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+export async function getContentReviewLogs(
+  params: GetContentReviewLogsParams = {}
+): Promise<GetContentReviewLogsResponse> {
+  const queryParams = buildQueryParams({
+    p: params.p || 1,
+    page_size: params.page_size || 20,
+    ...params,
+  })
+  const res = await api.get(`/api/log/content_review?${queryParams}`)
+  return res.data
+}
+
+export async function getContentReviewLogsStat(
+  params: Omit<GetContentReviewLogsParams, 'p' | 'page_size'> = {}
+): Promise<GetContentReviewLogsStatResponse> {
+  const queryParams = buildQueryParams(params as Record<string, unknown>)
+  const res = await api.get(`/api/log/content_review/stat?${queryParams}`)
+  return res.data
+}
+
+export async function deleteContentReviewLogs(params: {
+  targetTimestamp: number
+  decision?: string
+}): Promise<{ success: boolean; message?: string; data?: number }> {
+  const queryParams = buildQueryParams({
+    target_timestamp: params.targetTimestamp,
+    decision: params.decision,
+  })
+  const res = await api.delete(`/api/log/content_review?${queryParams}`)
+  return res.data
+}

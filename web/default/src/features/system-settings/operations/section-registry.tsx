@@ -99,7 +99,12 @@ const OPERATIONS_SECTIONS = [
     titleKey: 'Log Maintenance',
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
-        defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultValues={{
+          LogConsumeEnabled: Boolean(settings.LogConsumeEnabled),
+          LogRetentionDays: Number.isFinite(Number(settings.LogRetentionDays))
+            ? Math.max(0, Math.trunc(Number(settings.LogRetentionDays)))
+            : 0,
+        }}
       />
     ),
   },

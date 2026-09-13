@@ -7,7 +7,6 @@
   "Failed for {{count}} user(s)": "Failed for {{count}} user(s)",
   "Failed for {{count}} user(s): {{detail}}": "Failed for {{count}} user(s): {{detail}}",
   "Failed to {{action}} users": "Failed to {{action}} users",
-  "Failed to clear high-risk flag": "Failed to clear high-risk flag",
   "Successfully deleted {{count}} user(s)": "Successfully deleted {{count}} user(s)",
   "Successfully disabled {{count}} user(s)": "Successfully disabled {{count}} user(s)",
   "Successfully enabled {{count}} user(s)": "Successfully enabled {{count}} user(s)",

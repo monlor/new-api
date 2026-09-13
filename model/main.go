@@ -212,6 +212,7 @@ func InitDB() (err error) {
 
 func InitLogDB() (err error) {
 	if os.Getenv("LOG_SQL_DSN") == "" {
+		// Shared DSN: Log + ContentReviewLog are migrated in migrateDB.
 		LOG_DB = DB
 		return
 	}
@@ -291,6 +292,12 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	// Separate LOG_SQL_DSN: ContentReviewLog lives only on LOG_DB (migrateLOGDB).
+	if os.Getenv("LOG_SQL_DSN") == "" {
+		if err := DB.AutoMigrate(&ContentReviewLog{}); err != nil {
+			return err
+		}
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -344,6 +351,12 @@ func migrateDBFast() error {
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
 	}
+	if os.Getenv("LOG_SQL_DSN") == "" {
+		migrations = append(migrations, struct {
+			model interface{}
+			name  string
+		}{&ContentReviewLog{}, "ContentReviewLog"})
+	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
 
@@ -383,6 +396,9 @@ func migrateDBFast() error {
 func migrateLOGDB() error {
 	var err error
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&ContentReviewLog{}); err != nil {
 		return err
 	}
 	return nil

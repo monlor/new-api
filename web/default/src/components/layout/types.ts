@@ -35,6 +35,7 @@ type BaseNavItem = {
  */
 export type NavLink = BaseNavItem & {
   url: LinkProps['to'] | (string & {})
+  params?: Record<string, string>
   items?: never
   type?: never
 }

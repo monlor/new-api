@@ -24,6 +24,27 @@ export {
   type ApiKeyFormValues,
   API_KEY_FORM_DEFAULT_VALUES,
   getApiKeyFormDefaultValues,
+  pickCreateApiKeyGroup,
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from './api-key-form'
+export {
+  endpointMapFromPricing,
+  filterChatModels,
+  isChatModel,
+} from './chat-models'
+export {
+  OPENCODE_DEFAULT_CONTEXT,
+  OPENCODE_DEFAULT_OUTPUT,
+  OPENCODE_NPM_OPENAI_COMPATIBLE,
+  buildOpenCodeConfig,
+  buildOpenCodeModelEntry,
+  buildOpenCodeProviderSettings,
+  getOpenCodeModelLimit,
+  normalizeOpenCodeBaseUrl,
+  pickOpenCodeDefaultModel,
+  toOpenCodeProviderId,
+  type OpenCodeConfigInput,
+  type OpenCodeModelEntry,
+  type OpenCodeModelLimit,
+} from './opencode-config'

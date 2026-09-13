@@ -196,14 +196,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             {isTokenBased ? t('Token-based') : t('Per Request')}
           </span>
           <RatioBadge model={props.model} className='shrink-0' />
-          {isDynamicPricing && (
-            <StatusBadge
-              label={t('Dynamic Pricing')}
-              variant='warning'
-              copyable={false}
-              size='sm'
-            />
-          )}
           {props.model.wallet_available && (
             <StatusBadge
               label={t('Balance')}

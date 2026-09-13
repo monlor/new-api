@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
@@ -82,6 +82,7 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
+import { pickCreateApiKeyGroup } from '../lib/api-key-form'
 import { type ApiKey } from '../types'
 import {
   ApiKeyGroupCombobox,
@@ -125,15 +126,16 @@ export function ApiKeysMutateDrawer({
   })
 
   const models = modelsData?.data || []
-  const groupsRaw = groupsData?.data || {}
-  const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
-    ([key, info]) => ({
+  const groupsRaw = groupsData?.data
+  const groups: ApiKeyGroupOption[] = useMemo(() => {
+    if (!groupsRaw) return []
+    return Object.entries(groupsRaw).map(([key, info]) => ({
       value: key,
       label: key,
       desc: info.desc || key,
       ratio: info.ratio,
-    })
-  )
+    }))
+  }, [groupsRaw])
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const schema = getApiKeyFormSchema(t)
 
@@ -151,27 +153,46 @@ export function ApiKeysMutateDrawer({
         }
       })
     } else if (open && !isUpdate) {
-      form.reset(
-        getApiKeyFormDefaultValues(defaultUseAutoGroup && backendHasAuto)
+      const defaults = getApiKeyFormDefaultValues(
+        defaultUseAutoGroup && backendHasAuto
       )
+      form.reset({
+        ...defaults,
+        group: pickCreateApiKeyGroup(groups, {
+          defaultUseAutoGroup: defaultUseAutoGroup && backendHasAuto,
+          currentGroup: defaults.group,
+        }),
+      })
     }
   }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
 
-  // Correct group after groups load: if the form value is not in available groups, fall back
+  // Create: preselect auto/default independently of JSON map order.
+  // Update: only replace a value that is no longer in the available list.
   useEffect(() => {
-    if (groups.length === 0) return
+    if (!open || groups.length === 0) return
     const currentGroup = form.getValues('group')
-    if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
-      const fallback =
-        groups.find((g) => g.value === 'default')?.value ??
-        groups[0]?.value ??
-        ''
-      form.setValue('group', fallback)
-      if (currentGroup === 'auto') {
+    if (isUpdate) {
+      if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
+        const fallback = pickCreateApiKeyGroup(groups, { currentGroup: '' })
+        form.setValue('group', fallback)
+        if (currentGroup === 'auto') {
+          form.setValue('cross_group_retry', false)
+        }
+      }
+      return
+    }
+
+    const nextGroup = pickCreateApiKeyGroup(groups, {
+      defaultUseAutoGroup: defaultUseAutoGroup && backendHasAuto,
+      currentGroup,
+    })
+    if (nextGroup && nextGroup !== currentGroup) {
+      form.setValue('group', nextGroup)
+      if (nextGroup !== 'auto') {
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form])
+  }, [open, isUpdate, groups, form, defaultUseAutoGroup, backendHasAuto])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)

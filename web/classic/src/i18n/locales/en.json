@@ -1829,6 +1829,9 @@
     "日志目录": "Log Directory",
     "日志类型": "Log type",
     "日志设置": "Log settings",
+    "日志保留天数": "Log retention (days)",
+    "超过该天数的用量日志和内容审查日志会自动删除，0 表示永久保留": "Automatically delete usage logs and content review logs older than this many days. 0 keeps them forever.",
+    "将清除选定时间之前的用量日志和内容审查日志": "This will clear usage logs and content review logs before the selected time",
     "日志详情": "Log details",
     "旧格式（JSON 对象）": "Legacy Format (JSON Object)",
     "旧格式（直接覆盖）：": "Old format (direct override):",
@@ -3815,6 +3818,16 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "默认模型": "Default model",
+    "小模型": "Small model",
+    "可选，用于生成标题": "Optional, used for titles",
+    "对话模型": "Chat models",
+    "复制 JSON": "Copy JSON",
+    "预览 JSON": "Preview JSON",
+    "Config JSON": "Config JSON",
+    "已打开 CC Switch，并复制完整模型 JSON。导入后请编辑供应商，粘贴到 Config JSON。": "Opened CC Switch and copied the full model JSON. After import, edit the provider and paste it into Config JSON.",
+    "已排除图像、嵌入、视频和音频模型。": "Image, embedding, video, and audio models are excluded.",
+    "CC Switch 目前只会从链接导入一个模型。点击导入后，请编辑供应商并把这段 JSON 粘贴到 Config JSON，然后保存。": "CC Switch currently imports only one model from the link. After clicking Import, open Edit Provider and paste this JSON into Config JSON, then Save."
   }
 }

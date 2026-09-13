@@ -624,3 +624,20 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 
 	return total, nil
 }
+
+const logCleanupBatchSize = 1000
+
+// CleanupExpiredLogs deletes usage logs and content review logs older than retentionDays.
+// retentionDays <= 0 keeps all records.
+func CleanupExpiredLogs(ctx context.Context, retentionDays int) (logCount int64, reviewCount int64, err error) {
+	if retentionDays <= 0 {
+		return 0, 0, nil
+	}
+	targetTimestamp := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
+	logCount, err = DeleteOldLog(ctx, targetTimestamp, logCleanupBatchSize)
+	if err != nil {
+		return logCount, 0, err
+	}
+	reviewCount, err = DeleteOldContentReviewLog(ctx, targetTimestamp, logCleanupBatchSize, "all")
+	return logCount, reviewCount, err
+}

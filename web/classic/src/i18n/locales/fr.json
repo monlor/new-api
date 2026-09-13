@@ -1822,6 +1822,9 @@
     "日志目录": "Répertoire des journaux",
     "日志类型": "Type de journal",
     "日志设置": "Config. journaux",
+    "日志保留天数": "Conservation des journaux (jours)",
+    "超过该天数的用量日志和内容审查日志会自动删除，0 表示永久保留": "Les journaux d'utilisation et de révision de contenu plus anciens que ce nombre de jours sont supprimés automatiquement. 0 les conserve indéfiniment.",
+    "将清除选定时间之前的用量日志和内容审查日志": "Effacera les journaux d'utilisation et de révision de contenu avant l'heure sélectionnée",
     "日志详情": "Détails du journal",
     "旧格式（JSON 对象）": "Ancien format (Objet JSON)",
     "旧格式（直接覆盖）：": "Ancien format (remplacement direct) :",
@@ -3669,6 +3672,16 @@
     "并确认自行承担部署": "confirm that I bear legal responsibility arising from deployment",
     "运营和收费行为产生的法律责任": "operation and charging behavior",
     "，": ", ",
-    "、": ", "
+    "、": ", ",
+    "默认模型": "Modèle par défaut",
+    "小模型": "Petit modèle",
+    "可选，用于生成标题": "Facultatif, utilisé pour les titres",
+    "对话模型": "Modèles de chat",
+    "复制 JSON": "Copier le JSON",
+    "预览 JSON": "Aperçu JSON",
+    "Config JSON": "Config JSON",
+    "已打开 CC Switch，并复制完整模型 JSON。导入后请编辑供应商，粘贴到 Config JSON。": "CC Switch a été ouvert et le JSON complet des modèles a été copié. Après l'import, modifiez le fournisseur et collez-le dans Config JSON.",
+    "已排除图像、嵌入、视频和音频模型。": "Les modèles d'image, d'embedding, de vidéo et d'audio sont exclus.",
+    "CC Switch 目前只会从链接导入一个模型。点击导入后，请编辑供应商并把这段 JSON 粘贴到 Config JSON，然后保存。": "CC Switch n'importe actuellement qu'un seul modèle depuis le lien. Après Import, ouvrez Modifier le fournisseur, collez ce JSON dans Config JSON, puis enregistrez."
   }
 }
