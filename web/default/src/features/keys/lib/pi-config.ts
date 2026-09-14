@@ -26,23 +26,49 @@ import {
 // Pi custom-provider defaults: https://pi.dev/docs/latest/models
 export const PI_API_OPENAI_COMPLETIONS = 'openai-completions'
 
+// Official Pi KnownProvider ids from packages/ai/src/types.ts, plus gemini alias.
 const PI_RESERVED_PROVIDER_IDS = new Set([
   'amazon-bedrock',
+  'ant-ling',
   'anthropic',
   'azure-openai-responses',
+  'baseten',
   'cerebras',
+  'cloudflare-ai-gateway',
+  'cloudflare-workers-ai',
   'deepseek',
+  'fireworks',
   'gemini',
+  'github-copilot',
   'google',
+  'google-vertex',
   'groq',
+  'huggingface',
+  'kimi-coding',
+  'minimax',
+  'minimax-cn',
   'mistral',
+  'moonshotai',
+  'moonshotai-cn',
   'nvidia',
   'openai',
+  'openai-codex',
   'opencode',
   'opencode-go',
   'openrouter',
+  'qwen-token-plan',
+  'qwen-token-plan-cn',
+  'qwen-token-plan-individual',
+  'radius',
   'together',
+  'vercel-ai-gateway',
   'xai',
+  'xiaomi',
+  'xiaomi-token-plan-ams',
+  'xiaomi-token-plan-cn',
+  'xiaomi-token-plan-sgp',
+  'zai',
+  'zai-coding-cn',
 ])
 
 export type PiModelInput = {
@@ -99,6 +125,10 @@ export function buildPiModelEntry(model: string): PiModelInput {
   }
 }
 
+export function toPiAuthProviderId(input: PiConfigInput): string {
+  return toPiProviderId(input.providerId || input.providerName)
+}
+
 export function buildPiProvider(input: PiConfigInput): Record<string, unknown> {
   return {
     name:
@@ -106,7 +136,6 @@ export function buildPiProvider(input: PiConfigInput): Record<string, unknown> {
       toPiProviderId(input.providerId || input.providerName),
     baseUrl: normalizeOpenCodeBaseUrl(input.baseUrl),
     api: PI_API_OPENAI_COMPLETIONS,
-    apiKey: input.apiKey,
     compat: {
       supportsDeveloperRole: false,
       supportsReasoningEffort: false,
@@ -116,11 +145,26 @@ export function buildPiProvider(input: PiConfigInput): Record<string, unknown> {
 }
 
 export function buildPiModelsJson(input: PiConfigInput): string {
-  const providerId = toPiProviderId(input.providerId || input.providerName)
+  const providerId = toPiAuthProviderId(input)
   return JSON.stringify(
     {
       providers: {
         [providerId]: buildPiProvider(input),
+      },
+    },
+    null,
+    2
+  )
+}
+
+// Official credential store: https://pi.dev/docs/latest/providers
+export function buildPiAuthJson(input: PiConfigInput): string {
+  const providerId = toPiAuthProviderId(input)
+  return JSON.stringify(
+    {
+      [providerId]: {
+        type: 'api_key',
+        key: input.apiKey,
       },
     },
     null,

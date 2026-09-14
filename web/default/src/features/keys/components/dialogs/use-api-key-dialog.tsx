@@ -17,12 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useMemo, useEffect } from 'react'
-import { AlertCircle, Info } from 'lucide-react'
+import {
+  AlertCircle,
+  CheckIcon,
+  ChevronDown,
+  CopyIcon,
+  Info,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { BundledLanguage } from 'shiki/bundle/web'
+import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -33,10 +45,11 @@ import {
 import { Dialog } from '@/components/dialog'
 import { useChatModels } from '../../hooks/use-chat-models'
 import {
+  buildOpenCodeAuthJson,
   buildOpenCodeConfig,
-  pickOpenCodeSmallModel,
+  openCodeAuthJsonPath,
 } from '../../lib/opencode-config'
-import { buildPiModelsJson } from '../../lib/pi-config'
+import { buildPiAuthJson, buildPiModelsJson } from '../../lib/pi-config'
 
 type ApiInfoEntry = { id: number; url: string; route: string }
 type ClaudePlatform = 'unix' | 'win-cmd' | 'win-ps'
@@ -160,24 +173,103 @@ function buildCurlCommand(
 // Sub-components
 // ---------------------------------------------------------------------------
 
+function FileConfigCopyButton(props: { code: string }) {
+  const { t } = useTranslation()
+  const [isCopied, setIsCopied] = useState(false)
+
+  const copyToClipboard = async () => {
+    if (typeof window === 'undefined' || !navigator?.clipboard?.writeText) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(props.code)
+      setIsCopied(true)
+      setTimeout(() => setIsCopied(false), 2000)
+    } catch {
+      // Clipboard can fail in non-secure contexts; keep the button usable.
+    }
+  }
+
+  const Icon = isCopied ? CheckIcon : CopyIcon
+  return (
+    <Button
+      type='button'
+      variant='ghost'
+      size='icon'
+      className='size-8 shrink-0'
+      onClick={copyToClipboard}
+      aria-label={t('Copy')}
+    >
+      <Icon className='size-3.5' />
+    </Button>
+  )
+}
+
 function FileConfigBlock(props: {
   label: string
   code: string
   lang: BundledLanguage | string
+  collapsible?: boolean
+  defaultOpen?: boolean
 }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(props.defaultOpen ?? false)
+  const lineCount = useMemo(
+    () => props.code.split('\n').filter(Boolean).length,
+    [props.code]
+  )
+
+  const codeBlock = (
+    <CodeBlock
+      code={props.code}
+      language={props.lang}
+      className='max-h-72 overflow-auto [&>div>div]:overflow-x-auto'
+    >
+      {props.collapsible ? null : <CodeBlockCopyButton />}
+    </CodeBlock>
+  )
+
+  if (!props.collapsible) {
+    return (
+      <div className='space-y-1.5'>
+        <code className='text-muted-foreground font-mono text-xs'>
+          {props.label}
+        </code>
+        {codeBlock}
+      </div>
+    )
+  }
+
   return (
-    <div className='space-y-1.5'>
-      <code className='text-muted-foreground font-mono text-xs'>
-        {props.label}
-      </code>
-      <CodeBlock
-        code={props.code}
-        language={props.lang}
-        className='overflow-x-auto [&>div>div]:overflow-x-auto'
-      >
-        <CodeBlockCopyButton />
-      </CodeBlock>
-    </div>
+    <Collapsible open={open} onOpenChange={setOpen} className='space-y-1.5'>
+      <div className='flex items-center gap-1'>
+        <CollapsibleTrigger
+          render={
+            <button
+              type='button'
+              className='hover:bg-muted/50 flex min-h-10 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-left transition-colors'
+            />
+          }
+          aria-label={open ? t('Collapse') : t('Expand')}
+        >
+          <ChevronDown
+            className={cn(
+              'text-muted-foreground size-4 shrink-0 transition-transform duration-150',
+              open && 'rotate-180'
+            )}
+            aria-hidden='true'
+          />
+          <code className='text-muted-foreground min-w-0 truncate font-mono text-xs'>
+            {props.label}
+          </code>
+          <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
+            {t('{{count}} lines', { count: lineCount })}
+          </span>
+        </CollapsibleTrigger>
+        <FileConfigCopyButton code={props.code} />
+      </div>
+      <CollapsibleContent>{codeBlock}</CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -318,20 +410,6 @@ export function UseApiKeyDialog(props: Props) {
     }
   }, [chatModelOptions, selectedModel])
 
-  useEffect(() => {
-    if (chatModels.length === 0) return
-    const defaultModel =
-      selectedModel && chatModels.includes(selectedModel)
-        ? selectedModel
-        : (chatModels[0] ?? '')
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOpencodeSmallModel((prev) => {
-      if (prev && chatModels.includes(prev) && prev !== defaultModel)
-        return prev
-      return pickOpenCodeSmallModel(chatModels, defaultModel) ?? ''
-    })
-  }, [chatModels, selectedModel])
-
   const apiKey = props.tokenKey.startsWith('sk-')
     ? props.tokenKey
     : `sk-${props.tokenKey}`
@@ -364,30 +442,31 @@ export function UseApiKeyDialog(props: Props) {
     selectedModel && chatModels.includes(selectedModel)
       ? selectedModel
       : (chatModels[0] ?? selectedModel)
-  const opencodeSmall =
-    opencodeSmallModel ||
-    pickOpenCodeSmallModel(chatModels, opencodeDefault) ||
-    ''
+  const opencodeSmall = opencodeSmallModel.trim()
   const opencodeModels = Array.from(
     new Set([opencodeDefault, opencodeSmall, ...chatModels].filter(Boolean))
   )
-  const opencodeConfig = buildOpenCodeConfig({
+  const opencodeConfigInput = {
     apiKey,
     baseUrl: effectiveEndpoint,
     providerName: systemName,
     defaultModel: opencodeDefault,
     smallModel: opencodeSmall,
     models: opencodeModels,
-  })
+  }
+  const opencodeConfig = buildOpenCodeConfig(opencodeConfigInput)
+  const opencodeAuth = buildOpenCodeAuthJson(opencodeConfigInput)
   const piModels = Array.from(
     new Set([selectedModel, ...chatModels].filter(Boolean))
   )
-  const piConfig = buildPiModelsJson({
+  const piConfigInput = {
     apiKey,
     baseUrl: effectiveEndpoint,
     providerName: systemName,
     models: piModels,
-  })
+  }
+  const piConfig = buildPiModelsJson(piConfigInput)
+  const piAuth = buildPiAuthJson(piConfigInput)
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -409,10 +488,17 @@ export function UseApiKeyDialog(props: Props) {
       ? '~/.config/opencode/opencode.json'
       : '%userprofile%\\.config\\opencode\\opencode.json'
 
-  const piConfigPath =
+  const opencodeAuthPath = openCodeAuthJsonPath(opencodePlatform)
+
+  const piModelsPath =
     piPlatform === 'unix'
       ? '~/.pi/agent/models.json'
       : '%userprofile%\\.pi\\agent\\models.json'
+
+  const piAuthPath =
+    piPlatform === 'unix'
+      ? '~/.pi/agent/auth.json'
+      : '%userprofile%\\.pi\\agent\\auth.json'
 
   const claudeEnvBlockLabel =
     claudePlatform === 'unix'
@@ -576,20 +662,26 @@ export function UseApiKeyDialog(props: Props) {
         >
           <p className='text-muted-foreground py-3 text-xs'>
             {t(
-              'Save the following config to the OpenCode config file. Each chat model includes its context and output limits. Image, embedding, video, and audio models are excluded.'
+              'Save opencode.json and auth.json. opencode.json holds the custom provider and model limits. auth.json holds the API key. Image, embedding, video, and audio models are excluded.'
             )}
           </p>
 
           <div className='space-y-2 pb-3'>
-            <Label>{t('Small model')}</Label>
-            <ComboboxInput
-              options={chatModelOptions}
-              value={opencodeSmallModel}
-              onValueChange={setOpencodeSmallModel}
-              placeholder={t('Optional, used for titles')}
-              emptyText={t('No models found')}
-              allowCustomValue
-            />
+            <Label htmlFor='use-api-key-opencode-small-model'>
+              {t('Small model')}
+            </Label>
+            {activeTab === 'opencode' ? (
+              <ComboboxInput
+                key='opencode-small-model'
+                id='use-api-key-opencode-small-model'
+                options={chatModelOptions}
+                value={opencodeSmallModel}
+                onValueChange={setOpencodeSmallModel}
+                placeholder={t('Optional, used for titles')}
+                emptyText={t('No models found')}
+                allowCustomValue
+              />
+            ) : null}
           </div>
 
           <PlatformTabs
@@ -604,7 +696,7 @@ export function UseApiKeyDialog(props: Props) {
           <div className='space-y-4 pt-4'>
             <WarningBanner>
               {t(
-                'This file contains your API key. Do not commit it to git. Restart OpenCode after saving.'
+                'auth.json contains your API key. Do not commit it to git. Merge this provider into an existing auth.json instead of overwriting other credentials.'
               )}
             </WarningBanner>
 
@@ -612,6 +704,13 @@ export function UseApiKeyDialog(props: Props) {
               label={opencodeConfigPath}
               code={opencodeConfig}
               lang='json'
+              collapsible
+            />
+            <FileConfigBlock
+              label={opencodeAuthPath}
+              code={opencodeAuth}
+              lang='json'
+              collapsible
             />
 
             <InfoBanner>
@@ -630,7 +729,7 @@ export function UseApiKeyDialog(props: Props) {
         >
           <p className='text-muted-foreground py-3 text-xs'>
             {t(
-              'Save the following config to the Pi models.json file. Each chat model includes its context and output limits. Image, embedding, video, and audio models are excluded.'
+              'Save models.json and auth.json into the Pi agent directory. models.json holds the custom provider and model limits. auth.json holds the API key. Image, embedding, video, and audio models are excluded.'
             )}
           </p>
 
@@ -646,11 +745,22 @@ export function UseApiKeyDialog(props: Props) {
           <div className='space-y-4 pt-4'>
             <WarningBanner>
               {t(
-                'This file contains your API key. Do not commit it to git. Pi reloads models.json when you open /model.'
+                'auth.json contains your API key. Do not commit it to git. Merge this provider into an existing auth.json instead of overwriting other credentials.'
               )}
             </WarningBanner>
 
-            <FileConfigBlock label={piConfigPath} code={piConfig} lang='json' />
+            <FileConfigBlock
+              label={piModelsPath}
+              code={piConfig}
+              lang='json'
+              collapsible
+            />
+            <FileConfigBlock
+              label={piAuthPath}
+              code={piAuth}
+              lang='json'
+              collapsible
+            />
 
             <InfoBanner>
               {t(

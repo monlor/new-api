@@ -110,7 +110,8 @@ const LIMIT_RULES: LimitRule[] = [
     limit: { context: 1_050_000, output: 128_000 },
   },
   {
-    test: (id) => /gpt-5/.test(id) || /(^|[-/:])codex/.test(id) || /codex$/.test(id),
+    test: (id) =>
+      /gpt-5/.test(id) || /(^|[-/:])codex/.test(id) || /codex$/.test(id),
     limit: { context: 400_000, output: 128_000 },
   },
   {
@@ -194,7 +195,10 @@ const LIMIT_RULES: LimitRule[] = [
 export function getOpenCodeModelLimit(model: string): OpenCodeModelLimit {
   const id = normalizeModelId(model)
   if (!id) {
-    return { context: OPENCODE_DEFAULT_CONTEXT, output: OPENCODE_DEFAULT_OUTPUT }
+    return {
+      context: OPENCODE_DEFAULT_CONTEXT,
+      output: OPENCODE_DEFAULT_OUTPUT,
+    }
   }
 
   const fromName = parseLimitFromId(id)
@@ -312,10 +316,40 @@ export type OpenCodeConfigParts = {
   config: Record<string, unknown>
 }
 
+export function toOpenCodeAuthProviderId(input: OpenCodeConfigInput): string {
+  return toOpenCodeProviderId(input.providerId || input.providerName)
+}
+
+export const OPENCODE_AUTH_JSON_PATH_UNIX = '~/.local/share/opencode/auth.json'
+export const OPENCODE_AUTH_JSON_PATH_WINDOWS =
+  '%userprofile%\\.local\\share\\opencode\\auth.json'
+
+export function openCodeAuthJsonPath(platform: 'unix' | 'windows'): string {
+  return platform === 'unix'
+    ? OPENCODE_AUTH_JSON_PATH_UNIX
+    : OPENCODE_AUTH_JSON_PATH_WINDOWS
+}
+
+export function buildOpenCodeAuthJson(input: OpenCodeConfigInput): string {
+  const providerId = toOpenCodeAuthProviderId(input)
+  return JSON.stringify(
+    {
+      [providerId]: {
+        type: 'api',
+        key: input.apiKey,
+      },
+    },
+    null,
+    2
+  )
+}
+
 export function buildOpenCodeConfigParts(
   input: OpenCodeConfigInput
 ): OpenCodeConfigParts {
-  const providerId = toOpenCodeProviderId(input.providerId || input.providerName)
+  const providerId = toOpenCodeProviderId(
+    input.providerId || input.providerName
+  )
   const models = uniqueModels(
     [...input.models, input.smallModel || ''],
     input.defaultModel || ''
@@ -324,14 +358,14 @@ export function buildOpenCodeConfigParts(
   for (const model of models) {
     modelEntries[model] = buildOpenCodeModelEntry(model)
   }
+  const options = {
+    baseURL: normalizeOpenCodeBaseUrl(input.baseUrl),
+    setCacheKey: true,
+  }
   const provider: Record<string, unknown> = {
     npm: OPENCODE_NPM_OPENAI_COMPATIBLE,
     name: input.providerName || providerId,
-    options: {
-      baseURL: normalizeOpenCodeBaseUrl(input.baseUrl),
-      apiKey: input.apiKey,
-      setCacheKey: true,
-    },
+    options,
     models: modelEntries,
   }
   const defaultModel = (input.defaultModel || models[0] || '').trim()
@@ -339,7 +373,13 @@ export function buildOpenCodeConfigParts(
   const model = defaultModel ? `${providerId}/${defaultModel}` : ''
   const small_model = smallModel ? `${providerId}/${smallModel}` : ''
 
-  const settings: Record<string, unknown> = { ...provider }
+  const settings: Record<string, unknown> = {
+    ...provider,
+    options: {
+      ...options,
+      apiKey: input.apiKey,
+    },
+  }
   const config: Record<string, unknown> = {
     $schema: OPENCODE_CONFIG_SCHEMA,
     provider: { [providerId]: provider },
@@ -364,5 +404,3 @@ export function buildOpenCodeProviderSettings(
 export function buildOpenCodeConfig(input: OpenCodeConfigInput): string {
   return JSON.stringify(buildOpenCodeConfigParts(input).config, null, 2)
 }
-
-

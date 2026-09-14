@@ -18,10 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
+import { endpointMapFromPricing } from './chat-models.ts'
 import {
   OPENCODE_DEFAULT_CONTEXT,
   OPENCODE_DEFAULT_OUTPUT,
   OPENCODE_NPM_OPENAI_COMPATIBLE,
+  buildOpenCodeAuthJson,
   buildOpenCodeConfig,
   buildOpenCodeConfigParts,
   buildOpenCodeProviderSettings,
@@ -32,9 +34,9 @@ import {
   normalizeOpenCodeBaseUrl,
   pickOpenCodeDefaultModel,
   pickOpenCodeSmallModel,
+  openCodeAuthJsonPath,
   toOpenCodeProviderId,
 } from './opencode-config.ts'
-import { endpointMapFromPricing } from './chat-models.ts'
 
 describe('getOpenCodeModelLimit', () => {
   test('uses Claude family context and output limits', () => {
@@ -114,7 +116,7 @@ describe('buildOpenCodeConfig', () => {
       provider: {
         'new-api': {
           npm: string
-          options: { baseURL: string; apiKey: string }
+          options: { baseURL: string; apiKey?: string }
           models: Record<
             string,
             {
@@ -129,17 +131,30 @@ describe('buildOpenCodeConfig', () => {
     assert.equal(parsed.$schema, 'https://opencode.ai/config.json')
     assert.equal(parsed.model, 'new-api/claude-sonnet-4-5')
     assert.equal(parsed.small_model, 'new-api/claude-haiku-4-5')
+    const withoutSmall = JSON.parse(
+      buildOpenCodeConfig({
+        apiKey: 'sk-test',
+        baseUrl: 'https://api.example.com',
+        providerName: 'New API',
+        defaultModel: 'claude-sonnet-4-5',
+        models: ['claude-sonnet-4-5', 'gpt-4o'],
+      })
+    ) as { small_model?: string }
+    assert.equal(withoutSmall.small_model, undefined)
     assert.equal(parsed.provider['new-api'].npm, OPENCODE_NPM_OPENAI_COMPATIBLE)
     assert.equal(
       parsed.provider['new-api'].options.baseURL,
       'https://api.example.com/v1'
     )
-    assert.equal(parsed.provider['new-api'].options.apiKey, 'sk-test')
+    assert.equal(parsed.provider['new-api'].options.apiKey, undefined)
     assert.equal(
       parsed.provider['new-api'].models['claude-sonnet-4-5'].limit.context,
       200_000
     )
-    assert.equal(parsed.provider['new-api'].models['gpt-4o'].limit.context, 128_000)
+    assert.equal(
+      parsed.provider['new-api'].models['gpt-4o'].limit.context,
+      128_000
+    )
     assert.deepEqual(
       parsed.provider['new-api'].models['claude-sonnet-4-5'].capabilities.input,
       ['text', 'image']
@@ -193,6 +208,10 @@ describe('buildOpenCodeConfig', () => {
     assert.equal(options.small_model, undefined)
     assert.equal(options.baseURL, 'https://api.example.com/v1')
     assert.equal(options.apiKey, 'sk-test')
+    const configOptions = fullConfig.provider['new-api'].options as {
+      apiKey?: string
+    }
+    assert.equal(configOptions.apiKey, undefined)
     const models = settings.models as Record<
       string,
       { name: string; limit: { context: number; output: number } }
@@ -231,6 +250,38 @@ describe('buildOpenCodeConfig', () => {
       ]),
       'claude-sonnet-4-5'
     )
+  })
+})
+
+describe('buildOpenCodeAuthJson', () => {
+  test('writes the official api credential keyed by provider id', () => {
+    const json = buildOpenCodeAuthJson({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.example.com',
+      providerName: 'New API',
+      defaultModel: 'gpt-4o',
+      models: ['gpt-4o'],
+    })
+    assert.deepEqual(JSON.parse(json), {
+      'new-api': { type: 'api', key: 'sk-test' },
+    })
+  })
+
+  test('round-trips quotes, backslashes, and newlines in the key', () => {
+    const apiKey = 'sk-"quoted"\\slash\nline'
+    const json = buildOpenCodeAuthJson({
+      apiKey,
+      baseUrl: 'https://api.example.com',
+      providerName: 'New API',
+      defaultModel: 'gpt-4o',
+      models: [],
+    })
+    const parsed = JSON.parse(json) as Record<
+      string,
+      { type: string; key: string }
+    >
+    assert.deepEqual(parsed['new-api'], { type: 'api', key: apiKey })
+    assert.ok(json.includes(`"key": ${JSON.stringify(apiKey)}`))
   })
 })
 
@@ -280,6 +331,19 @@ describe('isChatModel', () => {
         ])
       ),
       ['gpt-4o']
+    )
+  })
+})
+
+describe('openCodeAuthJsonPath', () => {
+  test('uses the XDG data directory on Windows, not LOCALAPPDATA cache', () => {
+    assert.equal(
+      openCodeAuthJsonPath('unix'),
+      '~/.local/share/opencode/auth.json'
+    )
+    assert.equal(
+      openCodeAuthJsonPath('windows'),
+      '%userprofile%\\.local\\share\\opencode\\auth.json'
     )
   })
 })

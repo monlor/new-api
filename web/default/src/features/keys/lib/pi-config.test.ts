@@ -20,6 +20,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import {
   PI_API_OPENAI_COMPLETIONS,
+  buildPiAuthJson,
   buildPiModelEntry,
   buildPiModelsJson,
   buildPiProvider,
@@ -32,6 +33,9 @@ describe('toPiProviderId', () => {
     assert.equal(toPiProviderId('New API'), 'new-api')
     assert.equal(toPiProviderId('OpenAI'), 'newapi-openai')
     assert.equal(toPiProviderId('anthropic'), 'newapi-anthropic')
+    assert.equal(toPiProviderId('MiniMax'), 'newapi-minimax')
+    assert.equal(toPiProviderId('ZAI'), 'newapi-zai')
+    assert.equal(toPiProviderId('GitHub Copilot'), 'newapi-github-copilot')
   })
 })
 
@@ -59,7 +63,7 @@ describe('buildPiModelsJson', () => {
           name: string
           baseUrl: string
           api: string
-          apiKey: string
+          apiKey?: string
           compat: {
             supportsDeveloperRole: boolean
             supportsReasoningEffort: boolean
@@ -80,7 +84,7 @@ describe('buildPiModelsJson', () => {
     assert.equal(provider.name, 'New API')
     assert.equal(provider.baseUrl, 'https://api.example.com/v1')
     assert.equal(provider.api, PI_API_OPENAI_COMPLETIONS)
-    assert.equal(provider.apiKey, 'sk-test')
+    assert.equal(provider.apiKey, undefined)
     assert.equal(provider.compat.supportsDeveloperRole, false)
     assert.equal(provider.compat.supportsReasoningEffort, false)
     assert.deepEqual(
@@ -112,12 +116,13 @@ describe('buildPiModelsJson', () => {
       providers: Record<string, unknown>
     }
     assert.equal(provider.baseUrl, 'https://api.example.com/v1')
+    assert.equal('apiKey' in provider, false)
     assert.deepEqual(parsed.providers['new-api'], provider)
     assert.equal(parsed.providers.openai, undefined)
     assert.deepEqual(buildPiModelEntry('deepseek-chat').input, ['text'])
   })
 
-  test('serializes empty key/models and round-trips quotes, backslashes, and newlines', () => {
+  test('serializes empty models and round-trips quotes, backslashes, and newlines', () => {
     const empty = JSON.parse(
       buildPiModelsJson({
         apiKey: '',
@@ -126,9 +131,9 @@ describe('buildPiModelsJson', () => {
         models: [],
       })
     ) as {
-      providers: { 'new-api': { apiKey: string; models: unknown[] } }
+      providers: { 'new-api': { apiKey?: string; models: unknown[] } }
     }
-    assert.equal(empty.providers['new-api'].apiKey, '')
+    assert.equal(empty.providers['new-api'].apiKey, undefined)
     assert.deepEqual(empty.providers['new-api'].models, [])
 
     const apiKey = 'sk-"quoted"\\slash\nline'
@@ -145,19 +150,64 @@ describe('buildPiModelsJson', () => {
         string,
         {
           name: string
-          apiKey: string
+          apiKey?: string
           models: Array<{ id: string; name: string }>
         }
       >
     }
     const provider = parsed.providers[toPiProviderId(providerName)]
     assert.equal(provider.name, providerName)
-    assert.equal(provider.apiKey, apiKey)
+    assert.equal(provider.apiKey, undefined)
     assert.deepEqual(
       provider.models.map((model) => model.id),
       [modelId]
     )
     assert.equal(provider.models[0].name, modelId)
-    assert.ok(json.includes(`"apiKey": ${JSON.stringify(apiKey)}`))
+    assert.equal(json.includes('"apiKey"'), false)
+  })
+})
+
+describe('buildPiAuthJson', () => {
+  test('writes the official api_key credential keyed by provider id', () => {
+    const json = buildPiAuthJson({
+      apiKey: 'sk-test',
+      baseUrl: 'https://api.example.com',
+      providerName: 'New API',
+      models: ['gpt-4o'],
+    })
+    assert.deepEqual(JSON.parse(json), {
+      'new-api': { type: 'api_key', key: 'sk-test' },
+    })
+  })
+
+  test('prefixes reserved ids and round-trips quotes, backslashes, and newlines', () => {
+    const apiKey = 'sk-"quoted"\\slash\nline'
+    const json = buildPiAuthJson({
+      apiKey,
+      baseUrl: 'https://api.example.com',
+      providerName: 'OpenAI',
+      models: [],
+    })
+    const parsed = JSON.parse(json) as Record<
+      string,
+      { type: string; key: string }
+    >
+    assert.deepEqual(parsed['newapi-openai'], {
+      type: 'api_key',
+      key: apiKey,
+    })
+    assert.ok(json.includes(`"key": ${JSON.stringify(apiKey)}`))
+    assert.equal(parsed.minimax, undefined)
+    assert.deepEqual(
+      JSON.parse(
+        buildPiAuthJson({
+          apiKey: 'sk-minimax',
+          baseUrl: 'https://api.example.com',
+          providerName: 'MiniMax',
+          models: [],
+        })
+      ),
+      { 'newapi-minimax': { type: 'api_key', key: 'sk-minimax' } }
+    )
   })
 })
