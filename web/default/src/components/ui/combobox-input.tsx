@@ -17,10 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import * as React from 'react'
-import { createPortal } from 'react-dom'
 import { Check, ChevronsUpDown } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { nextCustomComboboxValue } from '@/components/ui/combobox-input-commit'
 import { Input } from '@/components/ui/input'
 
 export type ComboboxInputOption = {
@@ -57,12 +58,28 @@ export function ComboboxInput({
   const containerRef = React.useRef<HTMLDivElement>(null)
   const inputRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLUListElement>(null)
+  const portalRef = React.useRef<HTMLDivElement>(null)
+  const editedRef = React.useRef(false)
+  const searchValueRef = React.useRef('')
   const [portalStyle, setPortalStyle] = React.useState<React.CSSProperties>({})
   const selectedOption = React.useMemo(
     () => options.find((option) => option.value === value),
     [options, value]
   )
   const displayValue = open ? searchValue : (selectedOption?.label ?? value)
+
+  React.useEffect(() => {
+    if (!open) setSearchValue('')
+  }, [value, open])
+
+  const commitCustomValue = React.useCallback(
+    (raw: string) => {
+      if (!allowCustomValue) return
+      const next = nextCustomComboboxValue(raw, value)
+      if (next !== undefined) onValueChange(next)
+    },
+    [allowCustomValue, onValueChange, value]
+  )
 
   const filteredOptions = React.useMemo(() => {
     if (!searchValue.trim()) return options
@@ -84,13 +101,11 @@ export function ComboboxInput({
     if (!open) return
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false)
-        setSearchValue('')
-      }
+      const target = e.target
+      if (!(target instanceof Node)) return
+      if (containerRef.current?.contains(target)) return
+      if (portalRef.current?.contains(target)) return
+      setOpen(false)
     }
 
     document.addEventListener('mousedown', handleClickOutside)
@@ -98,6 +113,8 @@ export function ComboboxInput({
   }, [open])
 
   const handleSelect = (selectedValue: string) => {
+    editedRef.current = false
+    searchValueRef.current = selectedValue
     onValueChange(selectedValue)
     setOpen(false)
     setSearchValue('')
@@ -129,16 +146,19 @@ export function ComboboxInput({
         e.preventDefault()
         if (highlightedIndex >= 0 && filteredOptions[highlightedIndex]) {
           handleSelect(filteredOptions[highlightedIndex].value)
-        } else if (allowCustomValue && searchValue.trim()) {
+        } else if (
+          allowCustomValue &&
+          (searchValue.trim() || editedRef.current)
+        ) {
           handleSelect(searchValue.trim())
         } else {
-          // No highlighted option, just close the dropdown and keep current value
           setOpen(false)
           setSearchValue('')
         }
         break
       case 'Escape':
         e.preventDefault()
+        editedRef.current = false
         setOpen(false)
         setSearchValue('')
         break
@@ -190,18 +210,33 @@ export function ComboboxInput({
         aria-haspopup='listbox'
         aria-autocomplete='list'
         autoComplete='off'
+        autoCorrect='off'
+        autoCapitalize='off'
+        spellCheck={false}
         placeholder={placeholder}
         value={displayValue}
         onChange={(e) => {
-          const nextValue = e.target.value
-          setSearchValue(nextValue)
-          if (allowCustomValue) {
-            onValueChange(nextValue)
+          if (document.activeElement !== inputRef.current) {
+            setSearchValue('')
+            return
           }
+          editedRef.current = true
+          searchValueRef.current = e.target.value
+          setSearchValue(e.target.value)
           if (!open) setOpen(true)
         }}
+        onBlur={() => {
+          if (editedRef.current) {
+            commitCustomValue(searchValueRef.current)
+            editedRef.current = false
+          }
+          setOpen(false)
+        }}
         onFocus={() => {
-          setSearchValue(allowCustomValue && !selectedOption ? value : '')
+          editedRef.current = false
+          const next = allowCustomValue && !selectedOption ? value : ''
+          searchValueRef.current = next
+          setSearchValue(next)
           setOpen(true)
         }}
         onKeyDown={handleKeyDown}
@@ -212,6 +247,7 @@ export function ComboboxInput({
       {showDropdown &&
         createPortal(
           <div
+            ref={portalRef}
             style={portalStyle}
             className='bg-popover text-popover-foreground rounded-md border shadow-md'
           >

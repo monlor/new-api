@@ -27,7 +27,6 @@ import {
   buildOpenCodeProviderSettings,
   normalizeOpenCodeBaseUrl,
   pickOpenCodeDefaultModel,
-  pickOpenCodeSmallModel,
 } from '../../lib/opencode-config'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
@@ -232,9 +231,7 @@ export function CCSwitchDialog(props: Props) {
       const defaultModel =
         pickOpenCodeDefaultModel(chatModels) || chatModels[0] || ''
       setOpencodeDefaultModel(defaultModel)
-      setOpencodeSmallModel(
-        pickOpenCodeSmallModel(chatModels, defaultModel) ?? ''
-      )
+      setOpencodeSmallModel('')
     } else {
       setOpencodeDefaultModel('')
       setOpencodeSmallModel('')
@@ -250,10 +247,9 @@ export function CCSwitchDialog(props: Props) {
     setOpencodeDefaultModel((prev) =>
       prev && chatModels.includes(prev) ? prev : nextDefault
     )
-    setOpencodeSmallModel((prev) => {
-      if (prev && chatModels.includes(prev)) return prev
-      return pickOpenCodeSmallModel(chatModels, nextDefault) ?? ''
-    })
+    setOpencodeSmallModel((prev) =>
+      prev && chatModels.includes(prev) ? prev : ''
+    )
   }, [app, chatModels])
 
   const handleSubmit = async () => {

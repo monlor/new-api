@@ -138,20 +138,6 @@ function pickOpenCodeDefaultModel(models) {
   return unique[0] ?? '';
 }
 
-function pickOpenCodeSmallModel(models, defaultModel) {
-  const unique = uniqueModels(models, '');
-  const preferred = unique.find(
-    (model) =>
-      model !== defaultModel && /gpt-5\.6-luna/i.test(String(model)),
-  );
-  if (preferred) return preferred;
-  return unique.find(
-    (model) =>
-      model !== defaultModel &&
-      /haiku|mini|flash|lite|nano|small/.test(String(model).toLowerCase()),
-  );
-}
-
 function buildOpenCodeProviderSettings({
   apiKey,
   baseUrl,
@@ -247,7 +233,7 @@ export default function CCSwitchModal({
     const defaultModel = pickOpenCodeDefaultModel(modelIds) || modelIds[0] || '';
     setOpencodeSelected(modelIds);
     setOpencodeDefaultModel(defaultModel);
-    setOpencodeSmallModel(pickOpenCodeSmallModel(modelIds, defaultModel) || '');
+    setOpencodeSmallModel('');
   };
 
   useEffect(() => {
@@ -269,10 +255,9 @@ export default function CCSwitchModal({
     setOpencodeDefaultModel((prev) =>
       prev && chatModels.includes(prev) ? prev : nextDefault,
     );
-    setOpencodeSmallModel((prev) => {
-      if (prev && chatModels.includes(prev)) return prev;
-      return pickOpenCodeSmallModel(chatModels, nextDefault) || '';
-    });
+    setOpencodeSmallModel((prev) =>
+      prev && chatModels.includes(prev) ? prev : '',
+    );
   }, [visible, app, chatModels]);
 
   const opencodeSettingsJson = useMemo(() => {
