@@ -60,6 +60,8 @@ export const userSchema = z.object({
   high_risk: z.boolean().optional(),
   high_risk_reason: z.string().optional(),
   high_risk_at: z.number().optional(),
+  /** Raw user setting JSON blob (dto.UserSetting), returned by GET /api/user/:id */
+  setting: z.string().optional(),
 })
 export type User = z.infer<typeof userSchema>
 

@@ -15,6 +15,7 @@ type UserSetting struct {
 	RecordIpLog                      bool    `json:"record_ip_log,omitempty"`                        // 是否记录请求和错误日志IP
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	SkipContentReview                bool    `json:"skip_content_review,omitempty"`                  // SkipContentReview 是否跳过内容审查
 }
 
 var (

@@ -95,3 +95,17 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     remark: user.remark || '',
   }
 }
+
+/**
+ * Read `skip_content_review` out of the user's raw `setting` JSON blob.
+ * Returns false when the blob is absent or unparsable.
+ */
+export function parseUserSkipContentReview(user: User): boolean {
+  if (!user.setting) return false
+  try {
+    const parsed = JSON.parse(user.setting) as Record<string, unknown>
+    return parsed.skip_content_review === true
+  } catch {
+    return false
+  }
+}

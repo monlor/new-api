@@ -2567,9 +2567,7 @@ export function ChannelMutateDrawer({
                             <FormItem>
                               <FormLabel>{t('Channel Billing Type')}</FormLabel>
                               <Select
-                                onValueChange={(v) =>
-                                  field.onChange(Number(v))
-                                }
+                                onValueChange={(v) => field.onChange(Number(v))}
                                 value={String(field.value ?? 0)}
                               >
                                 <FormControl>
@@ -3236,6 +3234,31 @@ export function ChannelMutateDrawer({
                                 <FormDescription>
                                   {t(
                                     'Convert reasoning_content to <think> tag in content'
+                                  )}
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name='skip_content_review'
+                          render={({ field }) => (
+                            <FormItem className='flex items-center justify-between px-4 py-3'>
+                              <div className='space-y-0.5'>
+                                <FormLabel>
+                                  {t('Skip Content Review')}
+                                </FormLabel>
+                                <FormDescription>
+                                  {t(
+                                    'Only effective when this channel is pinned by an admin API key with an explicit channel id. Not applied when the channel is chosen by group load balancing.'
                                   )}
                                 </FormDescription>
                               </div>

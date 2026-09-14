@@ -18,6 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusBadgeProps } from '@/components/status-badge'
 
+const CONTENT_REVIEW_CLASSIFIER_MESSAGES = new Set([
+  'content review timed out',
+])
+
+export function translateContentReviewMessage(
+  t: (key: string) => string,
+  message?: string | null
+): string {
+  const raw = message?.trim() ?? ''
+  if (!raw) return ''
+  if (CONTENT_REVIEW_CLASSIFIER_MESSAGES.has(raw)) return t(raw)
+  return raw
+}
+
 export function getContentReviewDecisionConfig(decision?: string): {
   label: string
   variant: StatusBadgeProps['variant']

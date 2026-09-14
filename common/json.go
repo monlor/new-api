@@ -18,6 +18,15 @@ func DecodeJson(reader io.Reader, v any) error {
 	return json.NewDecoder(reader).Decode(v)
 }
 
+// DecodeFirstJSONValue decodes the first JSON value; trailing bytes after it are ignored.
+func DecodeFirstJSONValue(data []byte, v any) ([]byte, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(v); err != nil {
+		return nil, err
+	}
+	return data[:decoder.InputOffset()], nil
+}
+
 func Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }

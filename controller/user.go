@@ -728,6 +728,53 @@ func AdminClearUserBinding(c *gin.Context) {
 	})
 }
 
+func AdminSetUserContentReviewSkip(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	var req struct {
+		Skip *bool `json:"skip"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.Skip == nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	myRole := c.GetInt("role")
+	if !canManageTargetRole(myRole, user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+
+	if err := model.SetUserSkipContentReview(id, *req.Skip); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAuditFor(c, user.Id, "user.content_review_skip", map[string]interface{}{
+		"username": user.Username,
+		"skip":     *req.Skip,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "success",
+	})
+}
+
 func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
 	err := json.NewDecoder(c.Request.Body).Decode(&requestData)
@@ -1486,6 +1533,9 @@ func UpdateUserSetting(c *gin.Context) {
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
+		SkipContentReview:                existingSettings.SkipContentReview,
+		SidebarModules:                   existingSettings.SidebarModules,
+		Language:                         existingSettings.Language,
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

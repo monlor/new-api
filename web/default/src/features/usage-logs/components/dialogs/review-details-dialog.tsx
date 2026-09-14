@@ -21,7 +21,10 @@ import { formatLogQuota, formatTokens } from '@/lib/format'
 import { Label } from '@/components/ui/label'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge } from '@/components/status-badge'
-import { getContentReviewDecisionConfig } from '../../lib/review'
+import {
+  getContentReviewDecisionConfig,
+  translateContentReviewMessage,
+} from '../../lib/review'
 import type { ContentReviewLog } from '../../types'
 
 function reviewModeLabel(mode?: string) {
@@ -69,6 +72,12 @@ export function ReviewDetailsDialog({
   const { t } = useTranslation()
   if (!log) return null
   const decision = getContentReviewDecisionConfig(log.decision)
+  const reasonRaw = log.reason?.trim() || log.fail_message?.trim()
+  const failRaw = log.fail_message?.trim() ?? ''
+  const showErrorMessage =
+    Boolean(failRaw) &&
+    Boolean(log.reason?.trim()) &&
+    failRaw !== log.reason?.trim()
   return (
     <Dialog
       open={open}
@@ -108,7 +117,10 @@ export function ReviewDetailsDialog({
         value={log.confidence == null ? undefined : log.confidence.toFixed(2)}
         mono
       />
-      <DetailRow label={t('Reason')} value={log.reason} />
+      <DetailRow
+        label={t('Reason')}
+        value={translateContentReviewMessage(t, reasonRaw) || undefined}
+      />
       <DetailRow
         label={t('Prompt')}
         value={formatTokens(log.prompt_tokens ?? 0)}
@@ -133,11 +145,11 @@ export function ReviewDetailsDialog({
         mono
       />
       <DetailRow label={t('Group')} value={log.group} />
-      {log.fail_message && (
+      {showErrorMessage && (
         <div className='space-y-1'>
           <Label className='text-xs'>{t('Error Message')}</Label>
           <p className='text-destructive text-xs wrap-break-word'>
-            {log.fail_message}
+            {translateContentReviewMessage(t, failRaw)}
           </p>
         </div>
       )}

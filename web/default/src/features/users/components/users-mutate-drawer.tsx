@@ -54,6 +54,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import {
   SideDrawerSection,
@@ -62,7 +63,13 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
-import { createUser, updateUser, getUser, getGroups } from '../api'
+import {
+  createUser,
+  updateUser,
+  getUser,
+  getGroups,
+  setUserContentReviewSkip,
+} from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   userFormSchema,
@@ -70,6 +77,7 @@ import {
   USER_FORM_DEFAULT_VALUES,
   transformFormDataToPayload,
   transformUserToFormDefaults,
+  parseUserSkipContentReview,
 } from '../lib'
 import { type User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
@@ -91,6 +99,8 @@ export function UsersMutateDrawer({
   const { triggerRefresh } = useUsers()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [skipContentReview, setSkipContentReview] = useState(false)
+  const [skipReviewPending, setSkipReviewPending] = useState(false)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -113,11 +123,13 @@ export function UsersMutateDrawer({
       getUser(currentRow.id).then((result) => {
         if (result.success && result.data) {
           form.reset(transformUserToFormDefaults(result.data))
+          setSkipContentReview(parseUserSkipContentReview(result.data))
         }
       })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
+      setSkipContentReview(false)
     }
   }, [open, isUpdate, currentRow, form])
 
@@ -174,8 +186,31 @@ export function UsersMutateDrawer({
     const result = await getUser(currentRow.id)
     if (result.success && result.data) {
       form.reset(transformUserToFormDefaults(result.data))
+      setSkipContentReview(parseUserSkipContentReview(result.data))
     }
     triggerRefresh()
+  }
+
+  const handleSkipContentReviewChange = async (checked: boolean) => {
+    if (!currentRow) return
+    const previous = skipContentReview
+    setSkipContentReview(checked)
+    setSkipReviewPending(true)
+    try {
+      const result = await setUserContentReviewSkip(currentRow.id, checked)
+      if (result.success) {
+        toast.success(t('Saved successfully'))
+        await refreshUserData()
+      } else {
+        setSkipContentReview(previous)
+        toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+      }
+    } catch (_error) {
+      setSkipContentReview(previous)
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setSkipReviewPending(false)
+    }
   }
 
   return (
@@ -414,6 +449,31 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+                </SideDrawerSection>
+              )}
+
+              {/* Content Review (Update only) */}
+              {isUpdate && (
+                <SideDrawerSection>
+                  <h3 className='text-sm font-medium'>{t('Content Review')}</h3>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div className='space-y-0.5'>
+                      <Label htmlFor='skip-content-review'>
+                        {t('Skip Content Review')}
+                      </Label>
+                      <p className='text-muted-foreground text-xs'>
+                        {t(
+                          "This user's requests will not be checked by the content review system."
+                        )}
+                      </p>
+                    </div>
+                    <Switch
+                      id='skip-content-review'
+                      checked={skipContentReview}
+                      disabled={skipReviewPending}
+                      onCheckedChange={handleSkipContentReviewChange}
+                    />
+                  </div>
                 </SideDrawerSection>
               )}
 

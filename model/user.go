@@ -979,6 +979,24 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
+// SetUserSkipContentReview is a setting-column RMW so quota/status updates are not clobbered.
+func SetUserSkipContentReview(userId int, skip bool) error {
+	user, err := GetUserById(userId, true)
+	if err != nil {
+		return err
+	}
+	settings := user.GetSetting()
+	settings.SkipContentReview = skip
+	settingBytes, err := common.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	if err := DB.Model(&User{}).Where("id = ?", userId).Update("setting", string(settingBytes)).Error; err != nil {
+		return err
+	}
+	return invalidateUserCache(userId)
+}
+
 func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")

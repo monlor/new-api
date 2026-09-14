@@ -143,6 +143,17 @@ export async function adjustUserQuota(
 }
 
 /**
+ * Toggle whether a user's requests skip the content review system (admin).
+ */
+export async function setUserContentReviewSkip(
+  userId: number,
+  skip: boolean
+): Promise<ApiResponse> {
+  const res = await api.put(`/api/user/${userId}/content_review_skip`, { skip })
+  return res.data
+}
+
+/**
  * Reset user's Passkey registration
  */
 export async function resetUserPasskey(id: number): Promise<ApiResponse> {

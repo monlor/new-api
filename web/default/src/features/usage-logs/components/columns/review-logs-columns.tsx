@@ -27,7 +27,10 @@ import {
 import { TruncatedCell } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/status-badge'
-import { getContentReviewDecisionConfig } from '../../lib/review'
+import {
+  getContentReviewDecisionConfig,
+  translateContentReviewMessage,
+} from '../../lib/review'
 import type { ContentReviewLog } from '../../types'
 import { ReviewDetailsDialog } from '../dialogs/review-details-dialog'
 import { useUsageLogsContext } from '../usage-logs-provider'
@@ -98,10 +101,12 @@ export function useReviewLogsColumns(): ColumnDef<ContentReviewLog>[] {
       accessorKey: 'reason',
       header: t('Reason'),
       cell: ({ row }) => {
-        const reason = row.original.reason?.trim()
-        if (!reason) {
+        const rawReason =
+          row.original.reason?.trim() || row.original.fail_message?.trim()
+        if (!rawReason) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
+        const reason = translateContentReviewMessage(t, rawReason)
         return (
           <TruncatedCell
             className='max-w-[160px] text-xs'

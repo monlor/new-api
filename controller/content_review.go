@@ -44,6 +44,33 @@ func shouldContentReviewFormat(relayFormat types.RelayFormat) bool {
 	}
 }
 
+// skipContentReviewForUser reads skip from request user settings (fail-closed).
+func skipContentReviewForUser(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting)
+	if !ok {
+		return false
+	}
+	return userSetting.SkipContentReview
+}
+
+// skipContentReviewForChannel applies channel skip only when the channel is not load-balanced.
+func skipContentReviewForChannel(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if common.GetContextKeyBool(c, constant.ContextKeyChannelSelectedByLoadBalance) {
+		return false
+	}
+	otherSettings, ok := common.GetContextKeyType[dto.ChannelOtherSettings](c, constant.ContextKeyChannelOtherSetting)
+	if !ok {
+		return false
+	}
+	return otherSettings.SkipContentReview
+}
+
 func reviewUserPrompt(c *gin.Context, request dto.Request, meta *types.TokenCountMeta, relayFormat types.RelayFormat) *types.NewAPIError {
 	if c == nil || !shouldContentReviewFormat(relayFormat) {
 		return nil
@@ -118,9 +145,22 @@ func contentReviewRejectReason(result *contentReviewJobResult, reviewErr error) 
 		return truncateContentReviewReason(strings.TrimSpace(result.Reason))
 	}
 	if reviewErr != nil {
-		return truncateContentReviewReason(common.MaskSensitiveInfo(reviewErr.Error()))
+		return truncateContentReviewReason(classifyContentReviewError(reviewErr))
 	}
 	return ""
+}
+
+// classifyContentReviewError turns a raw review-call error into a message safe to
+// surface in logs/UI. Timeout is called out explicitly since it's by far the most
+// common failure mode and "context deadline exceeded" is not user-legible.
+func classifyContentReviewError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "content review timed out"
+	}
+	return common.MaskSensitiveInfo(err.Error())
 }
 
 func truncateContentReviewReason(reason string) string {
@@ -288,7 +328,7 @@ func recordContentReviewObservabilityLog(meta contentReviewLogMeta, cfg *setting
 		log.ReviewModel = strings.TrimSpace(cfg.Model)
 	}
 	if reviewErr != nil {
-		log.FailMessage = truncateContentReviewReason(common.MaskSensitiveInfo(reviewErr.Error()))
+		log.FailMessage = truncateContentReviewReason(classifyContentReviewError(reviewErr))
 	}
 	model.RecordContentReviewLog(log)
 }

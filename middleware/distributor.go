@@ -165,6 +165,10 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+		if !ok {
+			// Channel skip is pin-only; mark load-balanced selections.
+			common.SetContextKey(c, constant.ContextKeyChannelSelectedByLoadBalance, true)
+		}
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
