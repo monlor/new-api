@@ -145,6 +145,10 @@ func RequestWaffoPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", waffoMinTopup)})
 		return
 	}
+	if req.Amount > 10000 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值数量不能大于 10000"})
+		return
+	}
 
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, false)
@@ -393,6 +397,23 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
+
+	topUp := model.GetTopUpByTradeNo(merchantOrderId)
+	if topUp == nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo 订单不存在 trade_no=%s client_ip=%s", merchantOrderId, c.ClientIP()))
+		sendWaffoWebhookResponse(c, wh, false, "order not found")
+		return
+	}
+	paid := result.FinalDealAmount
+	if paid == "" {
+		paid = result.OrderAmount
+	}
+	expected := formatWaffoAmount(topUp.Money, getWaffoCurrency())
+	if !common.MoneyStringsEqual(expected, paid) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Waffo 实付金额不匹配 trade_no=%s expected=%s paid=%s client_ip=%s", merchantOrderId, expected, paid, c.ClientIP()))
+		sendWaffoWebhookResponse(c, wh, false, "amount mismatch")
+		return
+	}
 
 	if err := model.RechargeWaffo(merchantOrderId, c.ClientIP()); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo 充值处理失败 trade_no=%s client_ip=%s error=%q", merchantOrderId, c.ClientIP(), err.Error()))

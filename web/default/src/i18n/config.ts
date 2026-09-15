@@ -38,6 +38,12 @@ export const resources = {
   vi,
 } as const
 
+function applyI18nResources(next: typeof resources = resources) {
+  for (const [lng, bundle] of Object.entries(next)) {
+    i18n.addResourceBundle(lng, 'translation', bundle.translation, true, true)
+  }
+}
+
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
@@ -60,5 +66,11 @@ i18n
       },
     },
   })
+
+if (import.meta.hot) {
+  import.meta.hot.accept((mod) => {
+    if (mod?.resources) applyI18nResources(mod.resources)
+  })
+}
 
 export default i18n

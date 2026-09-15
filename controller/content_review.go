@@ -56,6 +56,40 @@ func skipContentReviewForUser(c *gin.Context) bool {
 	return userSetting.SkipContentReview
 }
 
+// resolveContentReviewSampleRate returns the 0-1 fraction of this user's
+// requests that should call the review model. Skip overrides to 0; a per-user
+// rate overrides the global default; missing settings inherit the global rate.
+func resolveContentReviewSampleRate(c *gin.Context, cfg *setting.ContentReviewSetting) float64 {
+	global := 1.0
+	if cfg != nil {
+		global = cfg.ReviewRequestSampleRate()
+	}
+	if c == nil {
+		return global
+	}
+	userSetting, ok := common.GetContextKeyType[dto.UserSetting](c, constant.ContextKeyUserSetting)
+	if !ok {
+		return global
+	}
+	if userSetting.SkipContentReview {
+		return 0
+	}
+	if userSetting.ContentReviewSampleRate != nil {
+		return setting.ClampUnitInterval(*userSetting.ContentReviewSampleRate)
+	}
+	return global
+}
+
+func shouldSampleContentReviewRequest(rate float64) bool {
+	if rate <= 0 {
+		return false
+	}
+	if rate >= 1 {
+		return true
+	}
+	return rand.Float64() < rate
+}
+
 // skipContentReviewForChannel applies channel skip only when the channel is not load-balanced.
 func skipContentReviewForChannel(c *gin.Context) bool {
 	if c == nil {
@@ -352,14 +386,42 @@ func runContentReviewJob(parent context.Context, cfg *setting.ContentReviewSetti
 		cfg.ReviewBlockThreshold(),
 	)
 	if decision.ShouldFlag {
-		if markErr := model.MarkUserHighRisk(meta.UserId, parsed.Reason, parsed.Confidence); markErr != nil {
+		newlyMarked, markErr := model.MarkUserHighRisk(meta.UserId, parsed.Reason, parsed.Confidence)
+		if markErr != nil {
 			common.SysLog(fmt.Sprintf("failed to mark user %d as high risk: %s", meta.UserId, markErr.Error()))
 		} else {
-			common.SysLog(fmt.Sprintf("content review flagged user %d: confidence=%.2f reason=%s", meta.UserId, parsed.Confidence, parsed.Reason))
+			common.SysLog(fmt.Sprintf("content review flagged user %d: confidence=%.2f reason=%s newly=%v", meta.UserId, parsed.Confidence, parsed.Reason, newlyMarked))
+			if newlyMarked {
+				notifyAdminContentReview(meta, &parsed, cfg)
+			}
 		}
 	}
 	recordContentReviewObservabilityLog(meta, cfg, &parsed, decision, call, nil)
 	return &contentReviewJobResult{ContentReviewResult: parsed, ContentReviewDecision: decision}, nil
+}
+
+func notifyAdminContentReview(meta contentReviewLogMeta, parsed *service.ContentReviewResult, cfg *setting.ContentReviewSetting) {
+	if cfg == nil || !cfg.NotifyAdmin {
+		return
+	}
+	confidence := 0.0
+	reason := ""
+	if parsed != nil {
+		confidence = parsed.Confidence
+		reason = truncateContentReviewReason(parsed.Reason)
+	}
+	username := meta.Username
+	if username == "" {
+		username = "-"
+	}
+	subject := fmt.Sprintf("Content review high-risk: user %s", username)
+	content := fmt.Sprintf(
+		"user_id=%d username=%s confidence=%.2f reason=%s request_id=%s model=%s",
+		meta.UserId, username, confidence, reason, meta.RequestId, meta.OriginalModel,
+	)
+	gopool.Go(func() {
+		service.NotifyRootUser(dto.NotifyTypeContentReview, subject, content)
+	})
 }
 
 const contentReviewTimeoutDrain = 100 * time.Millisecond

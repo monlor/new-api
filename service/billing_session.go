@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -272,12 +273,8 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 			}
 			s.tokenConsumed = 0
 		}
-		// TODO: model 层应定义哨兵错误（如 ErrNoActiveSubscription），用 errors.Is 替代字符串匹配
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "no active subscription") ||
-			strings.Contains(errMsg, "subscription quota insufficient") ||
-			strings.Contains(errMsg, "wallet quota insufficient") {
-			return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		if apiErr := mapQuotaInsufficientError(err); apiErr != nil {
+			return apiErr
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -290,10 +287,29 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	return nil
 }
 
+func mapQuotaInsufficientError(err error) *types.NewAPIError {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, model.ErrQuotaInsufficient) {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "no active subscription") ||
+		strings.Contains(errMsg, "subscription quota insufficient") ||
+		strings.Contains(errMsg, "wallet quota insufficient") {
+		return types.NewErrorWithStatusCode(fmt.Errorf("订阅额度不足或未配置订阅: %s", errMsg), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	return nil
+}
+
 func (s *BillingSession) reserveFunding(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
 		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+			if apiErr := mapQuotaInsufficientError(err); apiErr != nil {
+				return apiErr
+			}
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
@@ -303,6 +319,9 @@ func (s *BillingSession) reserveFunding(delta int) error {
 			funding.wallet = &WalletFunding{userId: s.relayInfo.UserId}
 		}
 		if err := model.DecreaseUserQuota(funding.wallet.userId, delta, false); err != nil {
+			if apiErr := mapQuotaInsufficientError(err); apiErr != nil {
+				return apiErr
+			}
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.wallet.consumed += delta
@@ -387,7 +406,8 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 
 	switch s.funding.Source() {
 	case BillingSourceWallet:
-		return s.relayInfo.UserQuota > trustQuota
+		// Wallet trust skip let settle drive quota negative. Always pre-consume.
+		return false
 	case BillingSourceSubscription:
 		// 订阅不能启用信任旁路。原因：
 		// 1. PreConsumeUserSubscription 要求 amount>0 来创建预扣记录并锁定订阅

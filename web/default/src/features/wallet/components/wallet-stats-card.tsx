@@ -77,7 +77,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       <div className='divide-border/60 grid grid-cols-3 divide-x'>
         {stats.map((item) => (
           <div key={item.label} className='px-3 py-3 sm:px-5 sm:py-4'>
-            <div className='flex items-center gap-2'>
+            <div className='flex min-w-0 items-center gap-2'>
               <item.icon className='text-muted-foreground/60 size-3.5 shrink-0' />
               <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
                 {item.label}

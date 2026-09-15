@@ -31,6 +31,7 @@ import {
 } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
 import { getUserTokenStatistics } from '../api'
+import { formatOriginalValueUsd } from '../lib/format'
 import type { StatisticsTimeRange, UserTokenUsageItem } from '../types'
 
 /**
@@ -86,6 +87,12 @@ function useTokenColumns(): StaticDataTableColumn<UserTokenUsageItem>[] {
       header: t('Spend'),
       cellClassName: 'tabular-nums',
       cell: (row) => formatQuota(row.quota),
+    },
+    {
+      id: 'original_value_usd',
+      header: t('Original Value'),
+      cellClassName: 'tabular-nums',
+      cell: (row) => formatOriginalValueUsd(row.original_value_usd),
     },
     {
       id: 'last_used_at',

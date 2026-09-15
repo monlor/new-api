@@ -87,7 +87,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 // loginMethodFromContext 根据请求路径推导登录方式，用于登录审计日志。
@@ -128,6 +128,27 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 }
 
 // setup session & cookies and then return user info
+func setupLoginWith2FA(user *model.User, c *gin.Context) {
+	if model.IsTwoFAEnabled(user.Id) {
+		session := sessions.Default(c)
+		session.Set("pending_username", user.Username)
+		session.Set("pending_user_id", user.Id)
+		if err := session.Save(); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message": i18n.T(c, i18n.MsgUserRequire2FA),
+			"success": true,
+			"data": map[string]interface{}{
+				"require_2fa": true,
+			},
+		})
+		return
+	}
+	setupLogin(user, c)
+}
+
 func setupLogin(user *model.User, c *gin.Context) {
 	model.UpdateUserLastLoginAt(user.Id)
 	session := sessions.Default(c)
@@ -227,6 +248,9 @@ func Register(c *gin.Context) {
 	if err := cleanUser.Insert(inviterId); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if common.EmailVerificationEnabled {
+		common.DeleteKey(user.Email, common.EmailVerificationPurpose)
 	}
 
 	// 获取插入后的用户ID
@@ -509,7 +533,7 @@ func GetSelf(c *gin.Context) {
 		"aff_history_quota": user.AffHistoryQuota,
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
+		"setting":           redactedUserSettingJSON(userSetting),
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
@@ -521,6 +545,16 @@ func GetSelf(c *gin.Context) {
 		"data":    responseData,
 	})
 	return
+}
+
+func redactedUserSettingJSON(setting dto.UserSetting) string {
+	setting.WebhookSecret = ""
+	setting.GotifyToken = ""
+	b, err := common.Marshal(setting)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
 }
 
 // 计算用户权限的辅助函数
@@ -767,6 +801,54 @@ func AdminSetUserContentReviewSkip(c *gin.Context) {
 	recordManageAuditFor(c, user.Id, "user.content_review_skip", map[string]interface{}{
 		"username": user.Username,
 		"skip":     *req.Skip,
+	})
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "success",
+	})
+}
+
+func AdminSetUserContentReviewSample(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	var req struct {
+		SampleRate *float64 `json:"sample_rate"`
+	}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	user, err := model.GetUserById(id, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	myRole := c.GetInt("role")
+	if !canManageTargetRole(myRole, user.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+
+	var stored *float64
+	if req.SampleRate != nil {
+		v := setting.ClampUnitInterval(*req.SampleRate)
+		stored = &v
+	}
+	if err := model.SetUserContentReviewSampleRate(id, stored); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	recordManageAuditFor(c, user.Id, "user.content_review_sample", map[string]interface{}{
+		"username":    user.Username,
+		"sample_rate": stored,
 	})
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1316,6 +1398,14 @@ func EmailBind(c *gin.Context) {
 	}
 	session := sessions.Default(c)
 	id := session.Get("id")
+	if id == nil {
+		common.ApiErrorI18n(c, i18n.MsgAuthNotLoggedIn)
+		return
+	}
+	if model.IsEmailAlreadyTaken(email) {
+		common.ApiErrorI18n(c, i18n.MsgUserExists)
+		return
+	}
 	user := model.User{
 		Id: id.(int),
 	}
@@ -1325,12 +1415,12 @@ func EmailBind(c *gin.Context) {
 		return
 	}
 	user.Email = email
-	// no need to check if this email already taken, because we have used verification code to check it
 	err = user.Update(false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	common.DeleteKey(email, common.EmailVerificationPurpose)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -1498,10 +1588,6 @@ func UpdateUserSetting(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyUrlEmpty)
 			return
 		}
-		if req.GotifyToken == "" {
-			common.ApiErrorI18n(c, i18n.MsgSettingGotifyTokenEmpty)
-			return
-		}
 		// 验证URL格式
 		if _, err := url.ParseRequestURI(req.GotifyUrl); err != nil {
 			common.ApiErrorI18n(c, i18n.MsgSettingGotifyUrlInvalid)
@@ -1541,6 +1627,7 @@ func UpdateUserSetting(c *gin.Context) {
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {
 		settings.WebhookUrl = req.WebhookUrl
+		settings.WebhookSecret = existingSettings.WebhookSecret
 		if req.WebhookSecret != "" {
 			settings.WebhookSecret = req.WebhookSecret
 		}
@@ -1559,7 +1646,14 @@ func UpdateUserSetting(c *gin.Context) {
 	// 如果是Gotify类型，添加Gotify配置到设置中
 	if req.QuotaWarningType == dto.NotifyTypeGotify {
 		settings.GotifyUrl = req.GotifyUrl
-		settings.GotifyToken = req.GotifyToken
+		settings.GotifyToken = existingSettings.GotifyToken
+		if req.GotifyToken != "" {
+			settings.GotifyToken = req.GotifyToken
+		}
+		if settings.GotifyToken == "" {
+			common.ApiErrorI18n(c, i18n.MsgSettingGotifyTokenEmpty)
+			return
+		}
 		// Gotify优先级范围0-10，超出范围则使用默认值5
 		if req.GotifyPriority < 0 || req.GotifyPriority > 10 {
 			settings.GotifyPriority = 5

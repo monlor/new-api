@@ -69,6 +69,7 @@ import {
   getUser,
   getGroups,
   setUserContentReviewSkip,
+  setUserContentReviewSampleRate,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -78,6 +79,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
   parseUserSkipContentReview,
+  parseUserContentReviewSampleRate,
 } from '../lib'
 import { type User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
@@ -101,6 +103,9 @@ export function UsersMutateDrawer({
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
   const [skipContentReview, setSkipContentReview] = useState(false)
   const [skipReviewPending, setSkipReviewPending] = useState(false)
+  const [reviewSampleRate, setReviewSampleRate] = useState('')
+  const [savedReviewSampleRate, setSavedReviewSampleRate] = useState('')
+  const [sampleRatePending, setSampleRatePending] = useState(false)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -124,12 +129,18 @@ export function UsersMutateDrawer({
         if (result.success && result.data) {
           form.reset(transformUserToFormDefaults(result.data))
           setSkipContentReview(parseUserSkipContentReview(result.data))
+          const rate = parseUserContentReviewSampleRate(result.data)
+          const formatted = rate === null ? '' : String(rate)
+          setReviewSampleRate(formatted)
+          setSavedReviewSampleRate(formatted)
         }
       })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
       setSkipContentReview(false)
+      setReviewSampleRate('')
+      setSavedReviewSampleRate('')
     }
   }, [open, isUpdate, currentRow, form])
 
@@ -187,6 +198,10 @@ export function UsersMutateDrawer({
     if (result.success && result.data) {
       form.reset(transformUserToFormDefaults(result.data))
       setSkipContentReview(parseUserSkipContentReview(result.data))
+      const rate = parseUserContentReviewSampleRate(result.data)
+      const formatted = rate === null ? '' : String(rate)
+      setReviewSampleRate(formatted)
+      setSavedReviewSampleRate(formatted)
     }
     triggerRefresh()
   }
@@ -210,6 +225,39 @@ export function UsersMutateDrawer({
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setSkipReviewPending(false)
+    }
+  }
+
+  const handleReviewSampleRateSave = async () => {
+    if (!currentRow) return
+    const trimmed = reviewSampleRate.trim()
+    if (trimmed === savedReviewSampleRate) return
+    let next: number | null = null
+    if (trimmed !== '') {
+      const parsed = Number(trimmed)
+      if (Number.isNaN(parsed) || parsed < 0 || parsed > 1) {
+        toast.error(
+          t(
+            'Review sample rate must be between 0 and 1, or empty to inherit the default.'
+          )
+        )
+        return
+      }
+      next = parsed
+    }
+    setSampleRatePending(true)
+    try {
+      const result = await setUserContentReviewSampleRate(currentRow.id, next)
+      if (result.success) {
+        toast.success(t('Saved successfully'))
+        await refreshUserData()
+      } else {
+        toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+      }
+    } catch (_error) {
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setSampleRatePending(false)
     }
   }
 
@@ -473,6 +521,38 @@ export function UsersMutateDrawer({
                       disabled={skipReviewPending}
                       onCheckedChange={handleSkipContentReviewChange}
                     />
+                  </div>
+                  <div className='space-y-1.5'>
+                    <Label htmlFor='content-review-sample-rate'>
+                      {t('Review request sample rate')}
+                    </Label>
+                    <div className='flex items-center gap-2'>
+                      <Input
+                        id='content-review-sample-rate'
+                        type='number'
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        placeholder={t('Inherit system default')}
+                        value={reviewSampleRate}
+                        disabled={
+                          skipContentReview ||
+                          sampleRatePending ||
+                          skipReviewPending
+                        }
+                        onChange={(event) =>
+                          setReviewSampleRate(event.target.value)
+                        }
+                        onBlur={() => {
+                          void handleReviewSampleRateSave()
+                        }}
+                      />
+                    </div>
+                    <p className='text-muted-foreground text-xs'>
+                      {t(
+                        "Fraction of this user's requests to review, from 0 to 1. Leave empty to use the system default. Skip above always wins."
+                      )}
+                    </p>
                   </div>
                 </SideDrawerSection>
               )}

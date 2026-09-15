@@ -101,6 +101,19 @@ func GetUserQuotaTotals(startTime int64, endTime int64) (UserQuotaTotals, error)
 	return totals, err
 }
 
+// ModelQuotaRow 按模型聚合的用量（用于换算"原始价值"）
+type ModelQuotaRow struct {
+	ModelName string `json:"model_name"`
+	Quota     int64  `json:"quota"`
+}
+
+// UserModelQuotaRow 按用户 + 模型聚合的用量
+type UserModelQuotaRow struct {
+	UserId    int    `json:"user_id"`
+	ModelName string `json:"model_name"`
+	Quota     int64  `json:"quota"`
+}
+
 // UserQuotaSparkPoint 多用户分桶用量（用于列表行内 sparkline）
 type UserQuotaSparkPoint struct {
 	UserId int   `json:"user_id"`

@@ -1,11 +1,13 @@
 package common
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // SSRFProtection SSRF防护配置
@@ -329,20 +331,49 @@ func (p *SSRFProtection) ValidateURL(urlStr string) error {
 	return nil
 }
 
-// ValidateURLWithFetchSetting 使用FetchSetting配置验证URL
-func ValidateURLWithFetchSetting(urlStr string, enableSSRFProtection, allowPrivateIp bool, domainFilterMode bool, ipFilterMode bool, domainList, ipList, allowedPorts []string, applyIPFilterForDomain bool) error {
-	// 如果SSRF防护被禁用，直接返回成功
-	if !enableSSRFProtection {
-		return nil
-	}
+var ssrfDialer = &net.Dialer{Timeout: 30 * time.Second}
 
-	// 解析端口范围配置
+// DialContext connects only to IPs that currently pass IsIPAccessAllowed,
+// so DNS rebinding between ValidateURL and connect cannot reach private hosts.
+func (p *SSRFProtection) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid dial address %s: %w", addr, err)
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !p.IsIPAccessAllowed(ip) {
+			return nil, fmt.Errorf("ip not allowed: %s", ip.String())
+		}
+		return ssrfDialer.DialContext(ctx, network, addr)
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("DNS resolution failed for %s: %w", host, err)
+	}
+	var lastErr error
+	for _, ipAddr := range ips {
+		if !p.IsIPAccessAllowed(ipAddr.IP) {
+			lastErr = fmt.Errorf("ip not allowed: %s resolves to %s", host, ipAddr.IP.String())
+			continue
+		}
+		conn, err := ssrfDialer.DialContext(ctx, network, net.JoinHostPort(ipAddr.IP.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no allowed IP for %s", host)
+	}
+	return nil, lastErr
+}
+
+func NewSSRFProtection(allowPrivateIp bool, domainFilterMode bool, ipFilterMode bool, domainList, ipList, allowedPorts []string, applyIPFilterForDomain bool) (*SSRFProtection, error) {
 	allowedPortInts, err := parsePortRanges(allowedPorts)
 	if err != nil {
-		return fmt.Errorf("request reject - invalid port configuration: %v", err)
+		return nil, err
 	}
-
-	protection := &SSRFProtection{
+	return &SSRFProtection{
 		AllowPrivateIp:         allowPrivateIp,
 		DomainFilterMode:       domainFilterMode,
 		DomainList:             domainList,
@@ -350,6 +381,19 @@ func ValidateURLWithFetchSetting(urlStr string, enableSSRFProtection, allowPriva
 		IpList:                 ipList,
 		AllowedPorts:           allowedPortInts,
 		ApplyIPFilterForDomain: applyIPFilterForDomain,
+	}, nil
+}
+
+// ValidateURLWithFetchSetting 使用FetchSetting配置验证URL
+func ValidateURLWithFetchSetting(urlStr string, enableSSRFProtection, allowPrivateIp bool, domainFilterMode bool, ipFilterMode bool, domainList, ipList, allowedPorts []string, applyIPFilterForDomain bool) error {
+	// 如果SSRF防护被禁用，直接返回成功
+	if !enableSSRFProtection {
+		return nil
+	}
+
+	protection, err := NewSSRFProtection(allowPrivateIp, domainFilterMode, ipFilterMode, domainList, ipList, allowedPorts, applyIPFilterForDomain)
+	if err != nil {
+		return fmt.Errorf("request reject - invalid port configuration: %v", err)
 	}
 	return protection.ValidateURL(urlStr)
 }

@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Fragment, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ExpandedState } from '@tanstack/react-table'
-import { Coins, Hash, Layers, Users } from 'lucide-react'
+import { Coins, DollarSign, Hash, Layers, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber, formatQuota, formatTokens } from '@/lib/format'
 import { TableCell, TableRow } from '@/components/ui/table'
@@ -31,6 +31,7 @@ import {
 import { getUserStatistics } from '../api'
 import { STATISTICS_DEFAULT_PERIOD } from '../constants'
 import { useStatisticsPeriod } from '../hooks/use-statistics-period'
+import { formatOriginalValueUsd } from '../lib/format'
 import type { UserUsageItem } from '../types'
 import { PeriodSelector } from './period-selector'
 import {
@@ -119,6 +120,16 @@ export function UserUsageTab() {
       growthPct: summary?.quota_growth_pct,
     },
     {
+      key: 'original_value',
+      title: t('Original Value'),
+      value: formatOriginalValueUsd(summary?.original_value_usd),
+      description: t(
+        "Estimated official USD value at each model's cheapest available group × channel ratio, markup excluded"
+      ),
+      icon: DollarSign,
+      tone: 'blue',
+    },
+    {
       key: 'count',
       title: t('Total Requests'),
       value: formatNumber(summary?.total_count ?? 0),
@@ -156,6 +167,7 @@ export function UserUsageTab() {
         items={kpiCards}
         loading={isLoading}
         error={isError}
+        className='xl:grid-cols-5'
       />
 
       <div className='flex min-h-0 flex-1 flex-col'>

@@ -17,6 +17,7 @@ import (
 
 var (
 	httpClient      *http.Client
+	fetchHttpClient *http.Client
 	proxyClientLock sync.Mutex
 	proxyClients    = make(map[string]*http.Client)
 )
@@ -33,6 +34,29 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	fetchSetting := system_setting.GetFetchSetting()
+	if !fetchSetting.EnableSSRFProtection {
+		return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, network, addr)
+	}
+	protection, err := common.NewSSRFProtection(fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
+	if err != nil {
+		return nil, err
+	}
+	return protection.DialContext(ctx, network, addr)
+}
+
+func newHTTPClient(transport http.RoundTripper) *http.Client {
+	client := &http.Client{
+		Transport:     transport,
+		CheckRedirect: checkRedirect,
+	}
+	if common.RelayTimeout != 0 {
+		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
+	}
+	return client
+}
+
 func InitHttpClient() {
 	transport := &http.Transport{
 		MaxIdleConns:        common.RelayMaxIdleConns,
@@ -45,21 +69,25 @@ func InitHttpClient() {
 		transport.TLSClientConfig = common.InsecureTLSConfig
 	}
 
-	if common.RelayTimeout == 0 {
-		httpClient = &http.Client{
-			Transport:     transport,
-			CheckRedirect: checkRedirect,
-		}
-	} else {
-		httpClient = &http.Client{
-			Transport:     transport,
-			Timeout:       time.Duration(common.RelayTimeout) * time.Second,
-			CheckRedirect: checkRedirect,
-		}
-	}
+	httpClient = newHTTPClient(transport)
+
+	// DNS-rebinding dial belongs on fetch/download, not the shared relay client.
+	// Relay uses localhost / RFC1918 / HTTP_PROXY-to-local-proxy in production.
+	fetchTransport := transport.Clone()
+	fetchTransport.DialContext = ssrfSafeDialContext
+	fetchHttpClient = newHTTPClient(fetchTransport)
 }
 
 func GetHttpClient() *http.Client {
+	return httpClient
+}
+
+// GetFetchHttpClient is the SSRF-filtered client for user-controlled URLs
+// (downloads, webhooks, notify endpoints). Relay must keep using GetHttpClient.
+func GetFetchHttpClient() *http.Client {
+	if fetchHttpClient != nil {
+		return fetchHttpClient
+	}
 	return httpClient
 }
 

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -42,6 +44,13 @@ func TelegramBind(c *gin.Context) {
 
 	session := sessions.Default(c)
 	id := session.Get("id")
+	if id == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "未登录",
+		})
+		return
+	}
 	user := model.User{Id: id.(int)}
 	if err := user.FillUserById(); err != nil {
 		c.JSON(200, gin.H{
@@ -95,7 +104,7 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 func checkTelegramAuthorization(params map[string][]string, token string) bool {
@@ -116,10 +125,22 @@ func checkTelegramAuthorization(params map[string][]string, token string) bool {
 		}
 		imploded += s
 	}
+	authDates, ok := params["auth_date"]
+	if !ok || len(authDates) == 0 {
+		return false
+	}
+	authDate, err := strconv.ParseInt(authDates[0], 10, 64)
+	if err != nil || authDate <= 0 {
+		return false
+	}
+	if time.Now().Unix()-authDate > 5*60 {
+		return false
+	}
+
 	sha256hash := sha256.New()
 	io.WriteString(sha256hash, token)
 	hmachash := hmac.New(sha256.New, sha256hash.Sum(nil))
 	io.WriteString(hmachash, imploded)
 	ss := hex.EncodeToString(hmachash.Sum(nil))
-	return hash == ss
+	return hmac.Equal([]byte(hash), []byte(ss))
 }

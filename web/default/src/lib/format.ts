@@ -93,7 +93,8 @@ export function parseQuotaFromDollars(amount: number): number {
 
 /**
  * Convert quota units to the configured display amount.
- * Reverse of parseQuotaFromDollars.
+ * Reverse of parseQuotaFromDollars. Do not round here — display rounding
+ * belongs in formatters, not this inverse used to hydrate forms.
  */
 export function quotaUnitsToDollars(units: number): number {
   const { config, meta } = getCurrencyDisplay()

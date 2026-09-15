@@ -93,6 +93,78 @@ export function chatLinkRequiresApiKey(url: string): boolean {
   )
 }
 
+const THIRD_PARTY_HTTPS_KEY_PRESET_HOSTS = [
+  'chat-preview.lobehub.com',
+  'lobehub.com',
+  'aiaw.app',
+]
+
+function hostnameMatches(host: string, candidate: string): boolean {
+  return host === candidate || host.endsWith(`.${candidate}`)
+}
+
+export function isSameOriginHttpUrl(url: string): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const parsed = new URL(url, window.location.href)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false
+    }
+    return parsed.origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
+function urlContainsApiKey(url: string, apiKey: string): boolean {
+  const candidates = new Set<string>()
+  const raw = apiKey.trim()
+  if (raw) {
+    candidates.add(raw)
+    candidates.add(encodeURIComponent(raw))
+  }
+  const normalized = normalizeApiKey(apiKey)
+  if (normalized) {
+    candidates.add(normalized)
+    candidates.add(encodeURIComponent(normalized))
+  }
+  return [...candidates].some(
+    (value) => value.length > 0 && url.includes(value)
+  )
+}
+
+/** Drop known HTTPS chat presets that embed {key} in a third-party URL. */
+export function isRemovedThirdPartyHttpsKeyPreset(url: string): boolean {
+  if (!HTTP_REGEX.test(url) || !url.includes('{key}')) return false
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return THIRD_PARTY_HTTPS_KEY_PRESET_HOSTS.some((candidate) =>
+      hostnameMatches(host, candidate)
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Block opening http(s) chat URLs that would leak the API key to a
+ * third-party origin (Referer / query / hash).
+ */
+export function shouldBlockHttpChatUrlWithKey(
+  resolvedUrl: string,
+  options?: { apiKey?: string; template?: string }
+): boolean {
+  if (!HTTP_REGEX.test(resolvedUrl)) return false
+  if (isSameOriginHttpUrl(resolvedUrl)) return false
+  if (options?.template && chatLinkRequiresApiKey(options.template)) {
+    return true
+  }
+  if (options?.apiKey && urlContainsApiKey(resolvedUrl, options.apiKey)) {
+    return true
+  }
+  return false
+}
+
 export function parseChatConfig(raw: RawChatConfig): ChatPreset[] {
   let parsed: unknown = raw
 
@@ -126,6 +198,10 @@ export function parseChatConfig(raw: RawChatConfig): ChatPreset[] {
 
       const url = value.trim()
       if (!url) {
+        return null
+      }
+
+      if (isRemovedThirdPartyHttpsKeyPreset(url)) {
         return null
       }
 

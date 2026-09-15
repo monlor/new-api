@@ -53,8 +53,15 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - `/api/subscription/self` 暴露可空的支付渠道订阅状态，并提供鉴权后的 Stripe Customer Portal Session 接口；Portal 按当前用户与本地订阅 ID 精确解析 Customer
 - 移除钱包页计费优先级选择与 `/api/subscription/self/preference`
 - Stripe 设置页增加生产上线清单：Webhook URL/签名密钥与完整事件集、Customer Portal 功能边界、recurring Price 周期一致性、test/live 模式隔离，以及仅新购且已有 Stripe 映射的订阅可进入 Portal
+- 管理员直接编辑单条用户订阅 (`PUT /api/subscription/admin/user_subscriptions/:id`)：可改 `amount_used` / `amount_total` / `end_time` / `status`，事务内 `FOR UPDATE` 加锁、校验 `amount_used <= amount_total`，写入审计日志 `user_subscription.admin_edit`；订阅不再有效（`status != active` 或 `end_time` 已到期）时在同一事务内触发分组回退并刷新用户分组缓存；`status=cancelled` 仅在**转入** cancelled 时把 `end_time` 打成 now（已是 cancelled 再保存保留历史取消时间，除非请求显式带了新的 `end_time`）；重新激活（`status=active` 且 `end_time > now`）时把用户分组恢复为 `UpgradeGroup` 并刷新缓存，不改写订阅行上的 `PrevUserGroup`；`active` 且 `end_time<=0` 拒绝写入
+- 钱包页为充值表单与「我的订阅」卡片并排；无订阅时充值表单占满整行。购买套餐在独立的订阅套餐页，横向卡片布局；套餐新增管理员可配置的 `IsRecommended`（推荐角标，替换原先「第一个套餐即推荐」的写死逻辑）与 `DisplayModels`（挑选系统内已有模型，逗号分隔存储，`GetDisplayModels()` 复用 `Channel.GetModels()` 的解析方式），无限额套餐显示「无限制」
+- 套餐卡片「预计可调用次数 / 系列原始价值」估算统一口径（`subscriptions/lib/model-value.ts` 为单一真源，`getEffectiveModelPricing()` 一次解析出 `modelRatio` / `completionRatio` / `effectiveRatio` 供全部估算共用）：
+  - 支持 `billing_mode: 'tiered_expr'` 分档计费模型：取表达式首档 `p`/`c` 系数（真实 $/1M 价）换算回等效倍率，不再误读已失效的 `model_ratio`
+  - 全部估算都乘上「最优分组 × 渠道倍率」（`group_channel_ratio_min_subscription` 优先，回退 `group_channel_ratio_min`），与模型广场主表展示价口径一致；此前仅「系列原始价值」计入、「预计可调用次数」按 ratio=1 计算
+  - 真实可用额度公式修正为 `额度/quotaPerUnit/effectiveRatio`——`modelRatio` 在推导中会完全约掉，原先额外再除一次属重复计价
+  - 有周期重置的套餐按整个订阅期的估算总额度（`calcEstimatedTotal`）计算，与卡片上已展示的「总额度: ≈」一致，此前只按单个周期额度算
 
-**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/wallet/components/subscription-plans-card.tsx`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/subscriptions/lib/model-value.ts`、`web/default/src/features/subscriptions/components/subscriptions-mutate-drawer.tsx`、`web/default/src/features/wallet/`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
 
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
@@ -189,20 +196,34 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 管理员审查日志页 `/usage-logs/review`：筛选判定/模型/用户、统计条、按时间清理（仅 pass 或全部）；列表展示截断后的原因，悬停显示完整预览
 - 现有「清理历史日志」同时删除审查日志；`LogRetentionDays` 按保留天数定时自动清理用量日志与审查日志（0=永久保留）；pass 可配采样率，输入预览默认关闭
 - 跳过内容审查开关：用户级（存入 `dto.UserSetting` JSON blob 的 `skip_content_review`，管理员端点 `PUT /api/user/:id/content_review_skip`，写审计日志 `user.content_review_skip`）与渠道级（存入 `dto.ChannelOtherSettings` 的 `skip_content_review`）；命中跳过时整个 `reviewUserPrompt` 不执行，也不产生审查日志与审查模型调用。渠道级仅在请求进入 `Relay()` 前已固定渠道时生效（管理员 API 密钥带显式 channel-id 后缀），渠道 Test 按钮与普通分组负载均衡均不生效
+- 审查请求抽查：全局 `content_review.request_sample_rate`（0–1，默认 1）按用户抽查是否调用审查模型；用户级 `content_review_sample_rate`（`PUT /api/user/:id/content_review_sample`，nil=沿用全局）覆盖全局；`skip_content_review` 仍为 0。未抽中的请求不调审查模型、不写审查日志
+- 管理员通知：`content_review.notify_admin`（默认关）开启后，仅在用户**从未高风险变为高风险**时通过 `NotifyRootUser` 通知根管理员（邮件/Webhook/Bark/Gotify，受现有通知限流约束）。同一账号后续命中只刷新高风险原因，不再通知；管理员清除高风险后再次命中会再通知一次
 
-**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`dto/user_settings.go`、`dto/channel_settings.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/channels/**`、`web/default/src/features/usage-logs/**`、`web/classic/src/pages/Setting/Operation/SettingsLog.jsx`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`service/user_notify.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`dto/user_settings.go`、`dto/channel_settings.go`、`dto/notify.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/channels/**`、`web/default/src/features/usage-logs/**`、`web/classic/src/pages/Setting/Operation/SettingsLog.jsx`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
 
 ## 十四、管理员统计面板 (Statistics)
 
 - 新增 admin-only 统计接口分组 `/api/statistics`（`middleware.AdminAuth()`），供新「统计」页面使用
-  - `GET /api/statistics/users`：基于 `quota_data` 预聚合表按 `user_id` 聚合的用户用量列表（`MAX(username)` 展示名；`keyword` 至少 2 个字符才模糊匹配；`p`/`page_size` 分页、`quota DESC` 排序），附 KPI 汇总与等长上一周期环比，以及每行 12 点 sparkline（`trend`，一次聚合查询批量取，不按行发请求）
+  - `GET /api/statistics/users`：基于 **LOG_DB `logs`（`type=consume`）** 按 `user_id` 聚合的用户用量列表，与使用日志同一数据源（不再读最多延迟 `DataExportInterval` 分钟的 `quota_data`）。`MAX(username)` 展示名；`keyword` 至少 2 个字符才模糊匹配；`p`/`page_size` 分页、`quota DESC` 排序；附 KPI 汇总与等长上一周期环比，以及每行 12 点 sparkline（`trend`，一次聚合查询批量取，不按行发请求）
   - `GET /api/statistics/users/tokens`：密钥粒度下钻。先在 **LOG_DB** 按 `token_id` 聚合（限定 `user_id` + `type=consume`），再到主库 `tokens` 用 `IN` 批量补 `name`/`status`，**不跨库 JOIN**；软删除的令牌返回 `status = -1`；响应绝不含 `Token.Key`
   - `GET /api/statistics/revenue`：收入 KPI / 趋势 / 渠道占比 / Top 充值用户 / 最近充值记录。统一口径 `status='success' AND payment_provider <> 'balance' AND complete_time > 0`（余额抵扣不是真实收入，`complete_time=0` 为历史脏数据）。`money` 统一为系统 USD：Epay 的网关 CNY 按当前 `Price` 换算后再聚合
 - 分桶复用 `rankingBucketExpr(column, bucketSize)`（MySQL `FLOOR(col/N)*N`，SQLite/PostgreSQL `(col/N)*N`）；粒度按时间跨度自动选择（≤3 天用小时桶，否则天桶）
+- 「真实成本 / Real Cost」KPI 改名为「原始价值 / Original Value」（字段 `real_cost_usd` → `original_value_usd`）：旧名容易被误读成「用户实际花的钱」，且中文界面还按 Rule 11 转成人民币，进一步加深误解。公式同步换成与订阅购买页 `calculateModelUsdValue` 一致的 `quota / QuotaPerUnit / minEffectiveRatio`——`minEffectiveRatio` 取该模型所有已启用分组里 `group_ratio × channel_ratio_min` 的最小值（优先用 `group_channel_ratio_min_subscription`），数据源为 `model.GetPricing()` + `ratio_setting.GetGroupRatioCopy()`，不再依赖 `GetModelRatioOrPrice`。展示端始终显示原始 USD（Rule 11 的「官方原始值」例外场景）。`original_value_usd` 在模型拆分查询失败、或没有任何一行成功换算时省略（nil / omitempty），不把 0 当成已计算；至少一行换算成功才发数字（含 0），部分换算只累加成功行；summary / 每用户 / 每密钥同一规则
 
 **涉及文件：** `model/statistics_common.go`、`model/statistics_usedata.go`、`model/statistics_log.go`、`model/statistics_topup.go`、`controller/statistics_user.go`、`controller/statistics_revenue.go`、`router/api-router.go`、`web/default/src/features/statistics/**`、`web/default/src/routes/_authenticated/statistics/**`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/i18n/locales/*.json`
 
-## 十五、文档 (Docs)
+## 十五、安全加固 (Security)
+
+- `TRUSTED_PROXIES`：默认（空 / `private`）信任 RFC1918 + loopback + IPv6 ULA，Docker + Traefik 不用配。`none` 才是不信任任何 hop。只有把服务端口直接暴露到公网时才需要 `none` 或写死 CIDR
+- SSRF：`DialContext` 只挂在 fetch/download 客户端（下载、Webhook、Bark/Gotify、用户图/视频 URL），不挂共享 relay `GetHttpClient()`，避免本地/私网渠道和 `HTTP_PROXY` 指向本机代理时被默认拦截
+- 支付：易支付核对 signed `money`、行锁入账、先入账再 ACK；钱包扣费 `quota >=`；订阅/其它网关比对实付金额
+- 鉴权：cookie 会话每次重读缓存角色/封禁；2FA 覆盖 OAuth/Telegram/Passkey/WeChat；Telegram `auth_date`；邮箱占用 `>=1` 且重置只改一行；Turnstile 10 分钟；过期 token 不能读 usage；公开 `/api/user/groups` 需登录
+- 会话 Cookie `SESSION_COOKIE_SECURE` 默认 true（dev compose 设 false）；CORS 不再 `AllowCredentials`+`*`；SMTP 证书校验跟随 `TLS_INSECURE_SKIP_VERIFY`
+- 首次初始化需 `SETUP_TOKEN`（或 `SETUP_SKIP_TOKEN=true`）；去掉 Lobe/aiaw 把 sk- 送到第三方的预设；用户日志去掉 channel id；公告 HTML 消毒
+
+**涉及文件：** `common/trusted_proxies.go`、`common/ssrf_protection.go`、`common/money.go`、`common/init.go`、`common/email.go`、`service/http_client.go`、`service/download.go`、`service/webhook.go`、`service/user_notify.go`、`service/billing_session.go`、`middleware/auth.go`、`middleware/cors.go`、`middleware/logger.go`、`middleware/turnstile-check.go`、`controller/topup.go`、`controller/subscription_payment_epay.go`、`controller/setup.go`、`controller/oauth.go`、`controller/user.go`、`controller/telegram.go`、`model/user.go`、`model/topup.go`、`model/log.go`、`setting/chat.go`、`main.go`、`docker-compose.dev.yml`、`web/default/src/**`
+
+## 十六、文档 (Docs)
 
 - AGENTS.md 为项目规范单一来源，CLAUDE.md 软链接指向它
 - 新增 agent-team harness 章节

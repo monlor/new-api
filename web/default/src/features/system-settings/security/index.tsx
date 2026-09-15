@@ -55,8 +55,10 @@ const defaultSecuritySettings: SecuritySettings = {
   'content_review.block_threshold': 0.8,
   'content_review.fail_open': true,
   'content_review.block_message': 'Request blocked by content review',
+  'content_review.request_sample_rate': 1,
   'content_review.pass_sample_rate': 1,
   'content_review.log_input_preview': false,
+  'content_review.notify_admin': false,
 }
 
 export function SecuritySettings() {

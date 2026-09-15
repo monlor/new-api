@@ -60,39 +60,43 @@ const (
 // ContentReviewSetting controls LLM-based prompt review using an in-system model.
 type ContentReviewSetting struct {
 	// Mode is the linear control: off → async → block. Empty falls back to Enabled/BlockEnabled.
-	Mode            string  `json:"mode"`
-	Enabled         bool    `json:"enabled"`
-	Model           string  `json:"model"`
-	Prompt          string  `json:"prompt"`
-	TimeoutMs       int     `json:"timeout_ms"`
-	MaxInputChars   int     `json:"max_input_chars"`
-	Group           string  `json:"group"`
-	FlagEnabled     bool    `json:"flag_enabled"`
-	FlagThreshold   float64 `json:"flag_threshold"`
-	BlockEnabled    bool    `json:"block_enabled"`
-	BlockThreshold  float64 `json:"block_threshold"`
-	FailOpen        bool    `json:"fail_open"`
-	BlockMessage    string  `json:"block_message"`
-	PassSampleRate  float64 `json:"pass_sample_rate"`
-	LogInputPreview bool    `json:"log_input_preview"`
+	Mode              string  `json:"mode"`
+	Enabled           bool    `json:"enabled"`
+	Model             string  `json:"model"`
+	Prompt            string  `json:"prompt"`
+	TimeoutMs         int     `json:"timeout_ms"`
+	MaxInputChars     int     `json:"max_input_chars"`
+	Group             string  `json:"group"`
+	FlagEnabled       bool    `json:"flag_enabled"`
+	FlagThreshold     float64 `json:"flag_threshold"`
+	BlockEnabled      bool    `json:"block_enabled"`
+	BlockThreshold    float64 `json:"block_threshold"`
+	FailOpen          bool    `json:"fail_open"`
+	BlockMessage      string  `json:"block_message"`
+	RequestSampleRate float64 `json:"request_sample_rate"`
+	PassSampleRate    float64 `json:"pass_sample_rate"`
+	LogInputPreview   bool    `json:"log_input_preview"`
+	NotifyAdmin       bool    `json:"notify_admin"`
 }
 
 var contentReviewSetting = ContentReviewSetting{
-	Mode:            "",
-	Enabled:         false,
-	Model:           "",
-	Prompt:          "",
-	TimeoutMs:       defaultContentReviewTimeoutMs,
-	MaxInputChars:   defaultContentReviewMaxInputChars,
-	Group:           "",
-	FlagEnabled:     true,
-	FlagThreshold:   defaultContentReviewFlagThreshold,
-	BlockEnabled:    true,
-	BlockThreshold:  defaultContentReviewBlockThreshold,
-	FailOpen:        true,
-	BlockMessage:    defaultContentReviewBlockMessage,
-	PassSampleRate:  1,
-	LogInputPreview: false,
+	Mode:              "",
+	Enabled:           false,
+	Model:             "",
+	Prompt:            "",
+	TimeoutMs:         defaultContentReviewTimeoutMs,
+	MaxInputChars:     defaultContentReviewMaxInputChars,
+	Group:             "",
+	FlagEnabled:       true,
+	FlagThreshold:     defaultContentReviewFlagThreshold,
+	BlockEnabled:      true,
+	BlockThreshold:    defaultContentReviewBlockThreshold,
+	FailOpen:          true,
+	BlockMessage:      defaultContentReviewBlockMessage,
+	RequestSampleRate: 1,
+	PassSampleRate:    1,
+	LogInputPreview:   false,
+	NotifyAdmin:       false,
 }
 
 func init() {
@@ -203,6 +207,17 @@ func (s *ContentReviewSetting) ReviewPassSampleRate() float64 {
 		return 1
 	}
 	return clampUnitInterval(s.PassSampleRate)
+}
+
+func (s *ContentReviewSetting) ReviewRequestSampleRate() float64 {
+	if s == nil {
+		return 1
+	}
+	return clampUnitInterval(s.RequestSampleRate)
+}
+
+func ClampUnitInterval(v float64) float64 {
+	return clampUnitInterval(v)
 }
 
 func clampUnitInterval(v float64) float64 {

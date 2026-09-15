@@ -68,6 +68,7 @@ func (user *User) ToBaseUser() *UserBase {
 		Group:    user.Group,
 		Quota:    user.Quota,
 		Status:   user.Status,
+		Role:     user.Role,
 		Username: user.Username,
 		Setting:  user.Setting,
 		Email:    user.Email,
@@ -303,9 +304,11 @@ func SearchUsers(keyword string, group string, role *int, status *int, highRisk 
 	return users, total, nil
 }
 
-func MarkUserHighRisk(userId int, reason string, confidence float64) error {
+// MarkUserHighRisk tags the user. newlyMarked is true only on the transition
+// from not high-risk to high-risk; later hits still refresh the reason.
+func MarkUserHighRisk(userId int, reason string, confidence float64) (newlyMarked bool, err error) {
 	if userId <= 0 {
-		return nil
+		return false, nil
 	}
 	reason = strings.TrimSpace(reason)
 	if utf8.RuneCountInString(reason) > 255 {
@@ -314,10 +317,22 @@ func MarkUserHighRisk(userId int, reason string, confidence float64) error {
 	if reason == "" {
 		reason = fmt.Sprintf("content review confidence %.2f", confidence)
 	}
-	return DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+	now := time.Now().Unix()
+	updates := map[string]interface{}{
 		"high_risk":        true,
 		"high_risk_reason": reason,
-		"high_risk_at":     time.Now().Unix(),
+		"high_risk_at":     now,
+	}
+	res := DB.Model(&User{}).Where("id = ? AND high_risk = ?", userId, false).Updates(updates)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	if res.RowsAffected > 0 {
+		return true, nil
+	}
+	return false, DB.Model(&User{}).Where("id = ?", userId).Updates(map[string]interface{}{
+		"high_risk_reason": reason,
+		"high_risk_at":     now,
 	}).Error
 }
 
@@ -781,7 +796,11 @@ func (user *User) FillUserByTelegramId() error {
 }
 
 func IsEmailAlreadyTaken(email string) bool {
-	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false
+	}
+	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected >= 1
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string) bool {
@@ -812,8 +831,18 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("email = ?", email).Update("password", hashedPassword).Error
-	return err
+	var users []User
+	if err := DB.Unscoped().Select("id").Where("email = ?", email).Find(&users).Error; err != nil {
+		return err
+	}
+	if len(users) != 1 {
+		return errors.New("该邮箱对应的账号数量异常，请联系管理员")
+	}
+	updates := map[string]interface{}{
+		"password":     hashedPassword,
+		"access_token": nil,
+	}
+	return DB.Model(&User{}).Where("id = ?", users[0].Id).Updates(updates).Error
 }
 
 func IsAdmin(userId int) bool {
@@ -997,6 +1026,36 @@ func SetUserSkipContentReview(userId int, skip bool) error {
 	return invalidateUserCache(userId)
 }
 
+// SetUserContentReviewSampleRate stores a per-user 0-1 review draw rate.
+// A nil rate clears the override so the user inherits the global setting.
+func SetUserContentReviewSampleRate(userId int, rate *float64) error {
+	user, err := GetUserById(userId, true)
+	if err != nil {
+		return err
+	}
+	settings := user.GetSetting()
+	if rate == nil {
+		settings.ContentReviewSampleRate = nil
+	} else {
+		v := *rate
+		if v < 0 {
+			v = 0
+		}
+		if v > 1 {
+			v = 1
+		}
+		settings.ContentReviewSampleRate = &v
+	}
+	settingBytes, err := common.Marshal(settings)
+	if err != nil {
+		return err
+	}
+	if err := DB.Model(&User{}).Where("id = ?", userId).Update("setting", string(settingBytes)).Error; err != nil {
+		return err
+	}
+	return invalidateUserCache(userId)
+}
+
 func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
@@ -1022,29 +1081,34 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return err
 }
 
+var ErrQuotaInsufficient = errors.New("额度不足")
+
 func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
+	// Always write the debit immediately. Batching consume would let parallel
+	// requests overdraw before the SQL runs.
+	if err := decreaseUserQuota(id, quota); err != nil {
+		return err
+	}
 	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
+		if cacheErr := cacheDecrUserQuota(id, int64(quota)); cacheErr != nil {
+			common.SysLog("failed to decrease user quota: " + cacheErr.Error())
 		}
 	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		return nil
-	}
-	return decreaseUserQuota(id, quota)
+	return nil
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
+	res := DB.Model(&User{}).Where("id = ? AND quota >= ?", id, quota).Update("quota", gorm.Expr("quota - ?", quota))
+	if res.Error != nil {
+		return res.Error
 	}
-	return err
+	if res.RowsAffected == 0 {
+		return ErrQuotaInsufficient
+	}
+	return nil
 }
 
 func DeltaUpdateUserQuota(id int, delta int) (err error) {

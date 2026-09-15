@@ -224,6 +224,45 @@ export function RechargeFormCard({
     }),
   ]
 
+  const skeletonBody = (
+    <div className='space-y-4 sm:space-y-6'>
+      {/* Preset Amounts Skeleton */}
+      <div className='space-y-3'>
+        <Skeleton className='h-3 w-16' />
+        <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className='h-[72px] rounded-lg' />
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Amount Input Skeleton */}
+      <div className='space-y-3'>
+        <Skeleton className='h-3 w-28' />
+        <Skeleton className='h-[42px] w-full' />
+      </div>
+
+      {/* Payment Methods Skeleton */}
+      <div className='space-y-3'>
+        <Skeleton className='h-3 w-32' />
+        <div className='flex flex-wrap gap-3'>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className='h-10 w-24 rounded-lg' />
+          ))}
+        </div>
+      </div>
+
+      {/* Redemption Code Section Skeleton */}
+      <div className='space-y-3 border-t pt-8'>
+        <Skeleton className='h-3 w-24' />
+        <div className='flex gap-2'>
+          <Skeleton className='h-10 flex-1' />
+          <Skeleton className='h-10 w-20' />
+        </div>
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
       <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
@@ -232,68 +271,26 @@ export function RechargeFormCard({
           <Skeleton className='mt-2 h-4 w-48' />
         </CardHeader>
         <CardContent className='space-y-4 p-3 sm:space-y-6 sm:p-5'>
-          <div className='space-y-4 sm:space-y-6'>
-            {/* Preset Amounts Skeleton */}
-            <div className='space-y-3'>
-              <Skeleton className='h-3 w-16' />
-              <div className='grid grid-cols-2 gap-3 sm:grid-cols-4'>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className='h-[72px] rounded-lg' />
-                ))}
-              </div>
-            </div>
-
-            {/* Custom Amount Input Skeleton */}
-            <div className='space-y-3'>
-              <Skeleton className='h-3 w-28' />
-              <Skeleton className='h-[42px] w-full' />
-            </div>
-
-            {/* Payment Methods Skeleton */}
-            <div className='space-y-3'>
-              <Skeleton className='h-3 w-32' />
-              <div className='flex flex-wrap gap-3'>
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className='h-10 w-24 rounded-lg' />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Redemption Code Section Skeleton */}
-          <div className='space-y-3 border-t pt-8'>
-            <Skeleton className='h-3 w-24' />
-            <div className='flex gap-2'>
-              <Skeleton className='h-10 flex-1' />
-              <Skeleton className='h-10 w-20' />
-            </div>
-          </div>
+          {skeletonBody}
         </CardContent>
       </Card>
     )
   }
 
-  return (
-    <TitledCard
-      title={t('Add Funds')}
-      description={t('Choose an amount and payment method')}
-      icon={<WalletCards className='h-4 w-4' />}
-      disableHoverEffect
-      action={
-        onOpenBilling ? (
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={onOpenBilling}
-            className='w-full gap-2 sm:w-auto'
-          >
-            <Receipt className='h-4 w-4' />
-            {t('Order History')}
-          </Button>
-        ) : null
-      }
-      contentClassName='space-y-4 sm:space-y-6'
+  const orderHistoryButton = onOpenBilling ? (
+    <Button
+      variant='outline'
+      size='sm'
+      onClick={onOpenBilling}
+      className='w-full gap-2 sm:w-auto'
     >
+      <Receipt className='h-4 w-4' />
+      {t('Order History')}
+    </Button>
+  ) : null
+
+  const body = (
+    <>
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>
@@ -481,6 +478,19 @@ export function RechargeFormCard({
           </AlertDescription>
         </Alert>
       )}
+    </>
+  )
+
+  return (
+    <TitledCard
+      title={t('Add Funds')}
+      description={t('Choose an amount and payment method')}
+      icon={<WalletCards className='h-4 w-4' />}
+      disableHoverEffect
+      action={orderHistoryButton}
+      contentClassName='space-y-4 sm:space-y-6'
+    >
+      {body}
     </TitledCard>
   )
 }

@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMemo } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
+import { Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
 import { BadgeCell } from '@/components/data-table'
@@ -55,7 +56,19 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           const plan = row.original.plan
           return (
             <div className='max-w-full min-w-0'>
-              <div className='truncate font-medium'>{plan.title}</div>
+              <div className='flex items-center gap-1.5'>
+                <div className='truncate font-medium'>{plan.title}</div>
+                {plan.is_recommended && (
+                  <StatusBadge
+                    variant='info'
+                    copyable={false}
+                    className='shrink-0'
+                  >
+                    <Sparkles className='h-3 w-3' />
+                    {t('Recommended')}
+                  </StatusBadge>
+                )}
+              </div>
               {plan.subtitle && (
                 <div className='text-muted-foreground truncate text-xs'>
                   {plan.subtitle}

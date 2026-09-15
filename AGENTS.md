@@ -161,6 +161,16 @@ This repo is a fork of [QuantumNous/new-api](https://github.com/QuantumNous/new-
 - When upstream absorbs one of our changes (so it's no longer a divergence), remove that entry.
 - **To pull upstream updates, use the `upstream-sync` skill** (`.claude/skills/upstream-sync/`): it assesses first (bug-fix-focused, channel/relay prioritized), reads this file to judge conflict impact, documents large conflicting changes as "not merging" in `FORK_SYNC_ASSESSMENT.md`, and only then selectively hand-ports. Never blind-`git merge upstream/main`.
 
+### Rule 11: Frontend Currency Display — Language-Driven CNY/USD
+
+Any frontend UI that displays quota / amount / price / currency MUST follow language-driven display, regardless of the admin's `quotaDisplayType` config:
+
+- **Simplified Chinese (`zh`)**: always convert and display in **CNY** (人民币).
+- **All other languages** (en, zh-TW, fr, ru, ja, vi): always display in **USD**.
+- **Exception**: only show a raw, un-converted USD value when the requirement explicitly calls for the original/official value regardless of language — e.g. converting current usage into OpenAI's official USD pricing, or showing a pre-discount USD price. This is an intentional raw-value display, not a violation of the rule above.
+
+Use the language-aware helpers in `web/default/src/lib/currency.ts` (`formatCurrencyFromUSD`, `formatQuotaWithCurrency`, `formatBillingCurrencyFromUSD`, `getCurrencyLabel`) for all quota/amount/price displays. Do not use `wallet/lib/format.ts`'s `formatPaymentCurrency` for USD-sourced amounts — it bypasses language-driven conversion.
+
 ## Harness — Full-Stack Dev System (Agent Team)
 
 **目标:** 用自协调的 agent 团队完成 new-api 的开发任务（后端/前端/channel 适配器/迁移/计费/全栈），并强制项目铁律与三库兼容。
@@ -176,3 +186,4 @@ This repo is a fork of [QuantumNous/new-api](https://github.com/QuantumNous/new-
 | 2026-06-22 | AGENTS.md 设为规范单一来源，CLAUDE.md 软链接指向它；新增 Rule 10 与 FORK_CHANGES.md | 文档 | fork 变更可追踪、便于同步上游 |
 | 2026-06-22 | 新增 `upstream-sync` skill（评估优先、筛 bugfix、渠道优先、读 FORK 评估冲突、选择性手动移植） | upstream-sync | 把上游同步方法论固化为可重复流程 |
 | 2026-09-15 | qa-reviewer 复验前端多文件改动时踩到 rsbuild dev server HMR 增量构建未生效导致的假阳性（产物与源码不一致） | qa-review | 记录教训：验证前端多文件改动前应 `docker compose restart frontend` 全量重建，不要只信 HMR |
+| 2026-09-15 | 新增 Rule 11：前端额度/金额/币种展示语言驱动规则（zh 一律 CNY，其他语言一律 USD，例外为明确要求原始值场景） | AGENTS.md | 固化钱包/额度展示的币种规范，避免中文页面仍显示美元或反之 |

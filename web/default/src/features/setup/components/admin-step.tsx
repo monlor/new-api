@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -34,25 +35,67 @@ import type { SetupFormValues } from '../types'
 interface AdminStepProps {
   form: UseFormReturn<SetupFormValues>
   rootInitialized?: boolean
+  tokenRequired?: boolean
 }
 
-export function AdminStep({ form, rootInitialized }: AdminStepProps) {
+function SetupTokenField({ form }: { form: UseFormReturn<SetupFormValues> }) {
+  const { t } = useTranslation()
+  return (
+    <FormField
+      control={form.control}
+      name='setupToken'
+      render={({ field }) => (
+        <FormItem className='sm:col-span-2'>
+          <FormLabel>{t('Setup token')}</FormLabel>
+          <FormControl>
+            <PasswordInput
+              {...field}
+              value={field.value ?? ''}
+              placeholder={t(
+                'Enter the setup token from server logs or SETUP_TOKEN'
+              )}
+              autoComplete='off'
+              onChange={(event) => {
+                form.clearErrors('setupToken')
+                field.onChange(event)
+              }}
+            />
+          </FormControl>
+          <FormDescription>
+            {t('Enter the setup token from server logs or SETUP_TOKEN')}
+          </FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  )
+}
+
+export function AdminStep({
+  form,
+  rootInitialized,
+  tokenRequired,
+}: AdminStepProps) {
   const { t } = useTranslation()
   if (rootInitialized) {
     return (
-      <Alert className='border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/40'>
-        <AlertDescription className='flex items-start gap-2'>
-          <ShieldCheck className='mt-0.5 size-4 text-sky-500' />
-          {t(
-            'The administrator account is already initialized. You can keep your existing credentials and continue to the next step.'
-          )}
-        </AlertDescription>
-      </Alert>
+      <div className='grid gap-4'>
+        <Alert className='border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/40'>
+          <AlertDescription className='flex items-start gap-2'>
+            <ShieldCheck className='mt-0.5 size-4 text-sky-500' />
+            {t(
+              'The administrator account is already initialized. You can keep your existing credentials and continue to the next step.'
+            )}
+          </AlertDescription>
+        </Alert>
+        {tokenRequired ? <SetupTokenField form={form} /> : null}
+      </div>
     )
   }
 
   return (
     <div className='grid gap-4 sm:grid-cols-2'>
+      {tokenRequired ? <SetupTokenField form={form} /> : null}
       <FormField
         control={form.control}
         name='username'

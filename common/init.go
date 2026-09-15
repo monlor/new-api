@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/constant"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -52,10 +54,19 @@ func InitEnv() {
 			log.Println("WARNING: SESSION_SECRET is set to the default value 'random_string', please change it to a random string.")
 			log.Println("警告：SESSION_SECRET被设置为默认值'random_string'，请修改为随机字符串。")
 			log.Fatal("Please set SESSION_SECRET to a random string.")
+		} else if len(ss) < 32 {
+			log.Fatal("SESSION_SECRET must be at least 32 characters.")
 		} else {
 			SessionSecret = ss
 		}
 	}
+	SessionCookieSecure = GetEnvOrDefaultBool("SESSION_COOKIE_SECURE", true)
+	if os.Getenv("SETUP_TOKEN") != "" {
+		SetupToken = os.Getenv("SETUP_TOKEN")
+	} else {
+		SetupToken = uuid.New().String()
+	}
+	SetupSkipToken = GetEnvOrDefaultBool("SETUP_SKIP_TOKEN", false)
 	if os.Getenv("CRYPTO_SECRET") != "" {
 		CryptoSecret = os.Getenv("CRYPTO_SECRET")
 	} else {

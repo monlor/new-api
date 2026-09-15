@@ -175,7 +175,7 @@ func DiscordOAuth(c *gin.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 func DiscordBind(c *gin.Context) {

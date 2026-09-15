@@ -40,19 +40,23 @@ export function buildSetupPayload(
   values: SetupFormValues,
   rootInitialized: boolean
 ) {
-  const { usageMode, ...rest } = values
+  const { usageMode, setupToken, username, password, confirmPassword } = values
 
-  const basePayload = {
+  const payload: Record<string, unknown> = {
     SelfUseModeEnabled: usageMode === 'self',
     DemoSiteEnabled: usageMode === 'demo',
   }
 
-  if (rootInitialized) {
-    return basePayload
+  if (!rootInitialized) {
+    payload.username = username
+    payload.password = password
+    payload.confirmPassword = confirmPassword
   }
 
-  return {
-    ...rest,
-    ...basePayload,
+  const token = setupToken?.trim()
+  if (token) {
+    payload.setup_token = token
   }
+
+  return payload
 }

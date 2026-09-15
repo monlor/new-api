@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"crypto/subtle"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -20,6 +22,7 @@ type SetupRequest struct {
 	Username           string `json:"username"`
 	Password           string `json:"password"`
 	ConfirmPassword    string `json:"confirmPassword"`
+	SetupToken         string `json:"setup_token"`
 	SelfUseModeEnabled bool   `json:"SelfUseModeEnabled"`
 	DemoSiteEnabled    bool   `json:"DemoSiteEnabled"`
 }
@@ -36,18 +39,13 @@ func GetSetup(c *gin.Context) {
 		return
 	}
 	setup.RootInit = model.RootUserExists()
-	if common.UsingMySQL {
-		setup.DatabaseType = "mysql"
-	}
-	if common.UsingPostgreSQL {
-		setup.DatabaseType = "postgres"
-	}
-	if common.UsingSQLite {
-		setup.DatabaseType = "sqlite"
-	}
 	c.JSON(200, gin.H{
 		"success": true,
-		"data":    setup,
+		"data": gin.H{
+			"status":         setup.Status,
+			"root_init":      setup.RootInit,
+			"token_required": !common.SetupSkipToken,
+		},
 	})
 }
 
@@ -61,9 +59,6 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	// Check if root user already exists
-	rootExists := model.RootUserExists()
-
 	var req SetupRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
@@ -73,6 +68,22 @@ func PostSetup(c *gin.Context) {
 		})
 		return
 	}
+
+	if !common.SetupSkipToken {
+		provided := strings.TrimSpace(req.SetupToken)
+		if provided == "" {
+			provided = strings.TrimSpace(c.GetHeader("X-Setup-Token"))
+		}
+		if subtle.ConstantTimeCompare([]byte(provided), []byte(common.SetupToken)) != 1 {
+			c.JSON(200, gin.H{
+				"success": false,
+				"message": "初始化令牌无效",
+			})
+			return
+		}
+	}
+
+	rootExists := model.RootUserExists()
 
 	// If root doesn't exist, validate and create admin account
 	if !rootExists {

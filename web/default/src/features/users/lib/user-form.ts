@@ -109,3 +109,22 @@ export function parseUserSkipContentReview(user: User): boolean {
     return false
   }
 }
+
+/**
+ * Read per-user content-review sample rate (0-1). `null` means inherit global.
+ */
+export function parseUserContentReviewSampleRate(
+  user: User
+): number | null {
+  if (!user.setting) return null
+  try {
+    const parsed = JSON.parse(user.setting) as Record<string, unknown>
+    const value = parsed.content_review_sample_rate
+    if (typeof value !== 'number' || Number.isNaN(value)) return null
+    if (value < 0) return 0
+    if (value > 1) return 1
+    return value
+  } catch {
+    return null
+  }
+}

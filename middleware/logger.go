@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
@@ -34,7 +36,28 @@ func SetUpLogger(server *gin.Engine) {
 			param.Latency,
 			param.ClientIP,
 			param.Method,
-			param.Path,
+			redactLoggedPath(param.Path),
 		)
 	}))
+}
+
+func redactLoggedPath(path string) string {
+	u, err := url.Parse(path)
+	if err != nil || u.RawQuery == "" {
+		return path
+	}
+	q := u.Query()
+	changed := false
+	for key := range q {
+		lower := strings.ToLower(key)
+		if lower == "key" || strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") {
+			q.Set(key, "[redacted]")
+			changed = true
+		}
+	}
+	if !changed {
+		return path
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }

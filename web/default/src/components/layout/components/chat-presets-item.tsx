@@ -45,6 +45,7 @@ import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import {
   chatLinkRequiresApiKey,
   resolveChatUrl,
+  shouldBlockHttpChatUrlWithKey,
   type ChatPreset,
 } from '@/features/chat/lib/chat-links'
 import { normalizeHref } from '../lib/url-utils'
@@ -205,6 +206,20 @@ export function ChatPresetsItem({ item }: { item: NavChatPresets }) {
 
       if (!url) {
         toast.error(t('Invalid chat link. Please contact the administrator.'))
+        return
+      }
+
+      if (
+        shouldBlockHttpChatUrlWithKey(url, {
+          apiKey: activeKey,
+          template: preset.url,
+        })
+      ) {
+        toast.error(
+          t(
+            'This chat link would send your API key to a third-party website. Opening it has been blocked.'
+          )
+        )
         return
       }
 

@@ -50,6 +50,66 @@ func (topUp *TopUp) EpayCreditQuota() int {
 	return int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
 }
 
+func forUpdateTradeNoCol() string {
+	if common.UsingPostgreSQL {
+		return `"trade_no"`
+	}
+	return "`trade_no`"
+}
+
+// RechargeEpay credits a pending Epay top-up inside a row lock after the
+// signed callback money matches the local order.
+func RechargeEpay(tradeNo, paidMoney, paymentType, callerIp string) error {
+	if tradeNo == "" {
+		return errors.New("未提供支付单号")
+	}
+
+	var quotaToAdd int
+	topUp := &TopUp{}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(forUpdateTradeNoCol()+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderEpay {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		if !common.MoneyEqualUSD(topUp.Money, paidMoney) {
+			return ErrPaidAmountMismatch
+		}
+		quotaToAdd = topUp.EpayCreditQuota()
+		if quotaToAdd <= 0 {
+			return errors.New("无效的充值额度")
+		}
+		if paymentType != "" && topUp.PaymentMethod != paymentType {
+			topUp.PaymentMethod = paymentType
+		}
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		return tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error
+	})
+	if err != nil {
+		return err
+	}
+	if quotaToAdd > 0 {
+		if cacheErr := cacheIncrUserQuota(topUp.UserId, int64(quotaToAdd)); cacheErr != nil {
+			common.SysLog("failed to increase user quota cache after epay recharge: " + cacheErr.Error())
+		}
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, "epay")
+		CheckAndGrantInviterRewardOnRecharge(topUp.UserId)
+	}
+	return nil
+}
+
 const (
 	PaymentMethodStripe       = "stripe"
 	PaymentMethodCreem        = "creem"
@@ -71,6 +131,7 @@ var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrPaidAmountMismatch    = errors.New("paid amount mismatch")
 )
 
 func (topUp *TopUp) Insert() error {

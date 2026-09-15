@@ -70,8 +70,10 @@ const schema = z
     blockThreshold: z.number().min(0).max(1),
     failOpen: z.boolean(),
     blockMessage: z.string(),
+    requestSampleRate: z.number().min(0).max(1),
     passSampleRate: z.number().min(0).max(1),
     logInputPreview: z.boolean(),
+    notifyAdmin: z.boolean(),
   })
   .superRefine((values, ctx) => {
     if (values.mode !== 'off' && values.model.trim() === '') {
@@ -98,8 +100,10 @@ const OPTION_KEYS: Record<keyof Values, string> = {
   blockThreshold: 'content_review.block_threshold',
   failOpen: 'content_review.fail_open',
   blockMessage: 'content_review.block_message',
+  requestSampleRate: 'content_review.request_sample_rate',
   passSampleRate: 'content_review.pass_sample_rate',
   logInputPreview: 'content_review.log_input_preview',
+  notifyAdmin: 'content_review.notify_admin',
 }
 
 const MODE_OPTIONS: Array<{
@@ -473,6 +477,56 @@ export function ContentReviewSection({
                 </FormDescription>
                 <FormMessage />
               </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='requestSampleRate'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Review request sample rate')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={!enabled || saving}
+                    {...safeNumberFieldProps(field)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Fraction of each user\'s requests sent to the review model, from 0 to 1. Default 1 (every request). Lower this to cut review-model cost. Per-user overrides are set on the Users page.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='notifyAdmin'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Notify admin on new high-risk user')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Send a notification to the root admin when a user is first marked high-risk. Repeat hits on an already high-risk user are not sent. Uses the root account notification channel (email, webhook, Bark, or Gotify).'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={!enabled || saving}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
             )}
           />
 

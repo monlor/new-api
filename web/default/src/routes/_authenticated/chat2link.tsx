@@ -23,7 +23,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
-import { resolveChatUrl } from '@/features/chat/lib/chat-links'
+import {
+  resolveChatUrl,
+  shouldBlockHttpChatUrlWithKey,
+} from '@/features/chat/lib/chat-links'
 
 export const Route = createFileRoute('/_authenticated/chat2link')({
   component: Chat2LinkPage,
@@ -68,6 +71,21 @@ function Chat2LinkPage() {
       apiKey: activeKey,
       serverAddress,
     })
+
+    if (
+      shouldBlockHttpChatUrlWithKey(url, {
+        apiKey: activeKey,
+        template: firstWebPreset.url,
+      })
+    ) {
+      toast.error(
+        t(
+          'This chat link would send your API key to a third-party website. Opening it has been blocked.'
+        )
+      )
+      navigate({ to: '/keys' })
+      return
+    }
 
     if (url) {
       window.location.href = url

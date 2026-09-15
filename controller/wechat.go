@@ -119,7 +119,7 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 type wechatBindRequest struct {

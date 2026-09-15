@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-contrib/sessions"
@@ -19,7 +20,7 @@ func TurnstileCheck() gin.HandlerFunc {
 		if common.TurnstileCheckEnabled {
 			session := sessions.Default(c)
 			turnstileChecked := session.Get("turnstile")
-			if turnstileChecked != nil {
+			if ts, ok := turnstileChecked.(int64); ok && time.Now().Unix()-ts < 10*60 {
 				c.Next()
 				return
 			}
@@ -66,7 +67,7 @@ func TurnstileCheck() gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			session.Set("turnstile", true)
+			session.Set("turnstile", time.Now().Unix())
 			err = session.Save()
 			if err != nil {
 				c.JSON(http.StatusOK, gin.H{

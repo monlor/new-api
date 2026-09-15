@@ -154,6 +154,20 @@ export async function setUserContentReviewSkip(
 }
 
 /**
+ * Set this user's content-review request sample rate (admin).
+ * Pass `null` to inherit the system default.
+ */
+export async function setUserContentReviewSampleRate(
+  userId: number,
+  sampleRate: number | null
+): Promise<ApiResponse> {
+  const res = await api.put(`/api/user/${userId}/content_review_sample`, {
+    sample_rate: sampleRate,
+  })
+  return res.data
+}
+
+/**
  * Reset user's Passkey registration
  */
 export async function resetUserPasskey(id: number): Promise<ApiResponse> {

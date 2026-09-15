@@ -302,6 +302,13 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 	// Try complete subscription order first
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
+	if sub := model.GetSubscriptionOrderByTradeNo(referenceId); sub != nil {
+		if event.Object.Order.AmountPaid <= 0 || !common.CentsEqualUSD(sub.Money, int64(event.Object.Order.AmountPaid)) {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("Creem 订阅实付金额不匹配 trade_no=%s expected=%.2f paid_cents=%d", referenceId, sub.Money, event.Object.Order.AmountPaid))
+			c.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+	}
 	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(event), model.PaymentProviderCreem, ""); err == nil {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem 订阅订单处理成功 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
 		c.Status(http.StatusOK)
@@ -345,6 +352,12 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 	}
 	if customerName == "" {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Creem 回调客户姓名为空 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
+	}
+
+	if event.Object.Order.AmountPaid <= 0 || !common.CentsEqualUSD(topUp.Money, int64(event.Object.Order.AmountPaid)) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("Creem 实付金额不匹配 trade_no=%s expected=%.2f paid_cents=%d", referenceId, topUp.Money, event.Object.Order.AmountPaid))
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
 	}
 
 	err := model.RechargeCreem(referenceId, customerEmail, customerName, c.ClientIP())

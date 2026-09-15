@@ -282,7 +282,11 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		"currency":     strings.ToUpper(event.GetObjectValue("currency")),
 		"event_type":   string(event.Type),
 	}
+	paidCents, _ := strconv.ParseInt(event.GetObjectValue("amount_total"), 10, 64)
 	if order := model.GetSubscriptionOrderByTradeNo(referenceId); order != nil {
+		if paidCents <= 0 || !common.CentsEqualUSD(order.Money, paidCents) {
+			return model.ErrPaidAmountMismatch
+		}
 		var checkout stripe.CheckoutSession
 		if err := common.Unmarshal(event.Data.Raw, &checkout); err != nil {
 			return err
@@ -304,6 +308,14 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		}
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe 订阅订单处理成功 trade_no=%s event_type=%s client_ip=%s", referenceId, string(event.Type), callerIp))
 		return nil
+	}
+
+	topUp := model.GetTopUpByTradeNo(referenceId)
+	if topUp == nil {
+		return model.ErrTopUpNotFound
+	}
+	if paidCents <= 0 || !common.CentsEqualUSD(topUp.Money, paidCents) {
+		return model.ErrPaidAmountMismatch
 	}
 
 	err := model.Recharge(referenceId, customerId, callerIp)

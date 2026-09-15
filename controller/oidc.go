@@ -178,7 +178,7 @@ func OidcAuth(c *gin.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 func OidcBind(c *gin.Context) {

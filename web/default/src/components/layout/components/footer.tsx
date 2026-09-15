@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Fragment, useMemo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+import { sanitizeHtml } from '@/lib/sanitize-html'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -78,7 +79,10 @@ function FooterLinkItem(props: { link: FooterLink }) {
 // Renders User Agreement / Privacy Policy links inline with the parent's
 // copyright row when either is configured in System Settings → Site. Emits
 // fragmented siblings so the parent flex container's gap controls spacing.
-function LegalLinks(props: { leadingSeparator?: boolean; withWrapper?: boolean }) {
+function LegalLinks(props: {
+  leadingSeparator?: boolean
+  withWrapper?: boolean
+}) {
   const { t } = useTranslation()
   const { status } = useStatus()
   const items: { key: string; label: string; href: string }[] = []
@@ -241,7 +245,7 @@ export function Footer(props: FooterProps) {
           <div className='bg-muted/20 border-border/50 flex flex-col items-center justify-center gap-4 rounded-2xl border px-4 py-4 backdrop-blur-sm sm:px-5'>
             <div
               className='custom-footer text-muted-foreground w-full text-center text-sm'
-              dangerouslySetInnerHTML={{ __html: footerHtml }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(footerHtml) }}
             />
             <LegalLinks withWrapper />
           </div>

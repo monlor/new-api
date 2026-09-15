@@ -26,7 +26,9 @@ import { useActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import {
   chatLinkRequiresApiKey,
+  isSameOriginHttpUrl,
   resolveChatUrl,
+  shouldBlockHttpChatUrlWithKey,
 } from '@/features/chat/lib/chat-links'
 
 export const Route = createFileRoute('/_authenticated/chat/$chatId')({
@@ -62,7 +64,7 @@ function ChatRouteComponent() {
     error,
   } = useActiveChatKey(Boolean(preset && requiresActiveKey))
 
-  const iframeSrc = useMemo(() => {
+  const resolvedUrl = useMemo(() => {
     if (!preset || !isWebLink) return ''
     if (requiresActiveKey && !activeKey) return ''
     return resolveChatUrl({
@@ -71,6 +73,17 @@ function ChatRouteComponent() {
       serverAddress,
     })
   }, [activeKey, isWebLink, preset, requiresActiveKey, serverAddress])
+
+  const blockedKeyLeak = Boolean(
+    resolvedUrl &&
+    shouldBlockHttpChatUrlWithKey(resolvedUrl, {
+      apiKey: requiresActiveKey ? activeKey : undefined,
+      template: preset?.url,
+    })
+  )
+
+  const iframeSrc = blockedKeyLeak ? '' : resolvedUrl
+  const iframeSameOrigin = Boolean(iframeSrc) && isSameOriginHttpUrl(iframeSrc)
 
   if (!preset) {
     return (
@@ -122,6 +135,21 @@ function ChatRouteComponent() {
     )
   }
 
+  if (blockedKeyLeak) {
+    return (
+      <div className='flex h-full flex-col items-center justify-center p-6'>
+        <Alert variant='destructive' className='max-w-xl'>
+          <AlertTitle>{t('Unable to open chat')}</AlertTitle>
+          <AlertDescription>
+            {t(
+              'This chat link would send your API key to a third-party website. Opening it has been blocked.'
+            )}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   if (requiresActiveKey && (isError || !activeKey || !iframeSrc)) {
     const message =
       error instanceof Error
@@ -158,6 +186,12 @@ function ChatRouteComponent() {
       key={iframeSrc}
       className='h-full w-full border-0'
       allow='camera; microphone'
+      referrerPolicy='no-referrer'
+      sandbox={
+        iframeSameOrigin
+          ? 'allow-scripts allow-same-origin allow-forms allow-popups'
+          : undefined
+      }
       title={`Chat preset: ${preset.name}`}
     />
   )

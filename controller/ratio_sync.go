@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -242,6 +243,11 @@ func FetchUpstreamRatios(c *gin.Context) {
 				fullURL = chItem.BaseURL + endpoint
 			}
 			isModelsDev := isModelsDevAPIEndpoint(fullURL)
+			fetchSetting := system_setting.GetFetchSetting()
+			if err := common.ValidateURLWithFetchSetting(fullURL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+				ch <- upstreamResult{Name: chItem.Name, Err: err.Error()}
+				return
+			}
 
 			uniqueName := chItem.Name
 			if chItem.ID != 0 {

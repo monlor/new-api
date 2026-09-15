@@ -31,4 +31,5 @@ export {
   transformFormDataToPayload,
   transformUserToFormDefaults,
   parseUserSkipContentReview,
+  parseUserContentReviewSampleRate,
 } from './user-form'

@@ -168,6 +168,12 @@ type SubscriptionPlan struct {
 	Enabled   bool `json:"enabled" gorm:"default:true"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
+	// Whether this plan is highlighted as "recommended" on the purchase page
+	IsRecommended bool `json:"is_recommended" gorm:"default:false"`
+
+	// Comma-separated model IDs to show per-model USD value for (same convention as Channel.Models)
+	DisplayModels string `json:"display_models" gorm:"type:text;default:''"`
+
 	AllowBalancePay *bool `json:"allow_balance_pay"`
 
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
@@ -207,6 +213,34 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowBalancePay == nil {
 		p.AllowBalancePay = common.GetPointer(true)
 	}
+}
+
+// SplitDisplayModels splits a comma-separated DisplayModels string, trimming each
+// token and dropping empties.
+func SplitDisplayModels(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// DisplayModelsWellFormed reports whether s is empty/whitespace or a comma list
+// with no raw empty tokens (e.g. "a,,b" is rejected).
+func DisplayModelsWellFormed(s string) bool {
+	if strings.TrimSpace(s) == "" {
+		return true
+	}
+	return len(SplitDisplayModels(s)) == len(strings.Split(s, ","))
+}
+
+func (p *SubscriptionPlan) GetDisplayModels() []string {
+	return SplitDisplayModels(p.DisplayModels)
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -466,6 +500,30 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	return prevGroup, nil
 }
 
+// applyUpgradeGroupToUserTx writes User.group to upgradeGroup when it differs.
+// Does not touch subscription PrevUserGroup.
+func applyUpgradeGroupToUserTx(tx *gorm.DB, userId int, upgradeGroup string) (string, error) {
+	if tx == nil {
+		return "", errors.New("tx is nil")
+	}
+	upgradeGroup = strings.TrimSpace(upgradeGroup)
+	if userId <= 0 || upgradeGroup == "" {
+		return "", nil
+	}
+	currentGroup, err := getUserGroupByIdTx(tx, userId)
+	if err != nil {
+		return "", err
+	}
+	if currentGroup == upgradeGroup {
+		return "", nil
+	}
+	if err := tx.Model(&User{}).Where("id = ?", userId).
+		Update("group", upgradeGroup).Error; err != nil {
+		return "", err
+	}
+	return upgradeGroup, nil
+}
+
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("tx is nil")
@@ -508,11 +566,10 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		}
 		if currentGroup != upgradeGroup {
 			prevGroup = currentGroup
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("group", upgradeGroup).Error; err != nil {
-				return nil, err
-			}
 		}
+	}
+	if _, err := applyUpgradeGroupToUserTx(tx, userId, upgradeGroup); err != nil {
+		return nil, err
 	}
 	sub := &UserSubscription{
 		UserId:        userId,
@@ -1195,6 +1252,114 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
 	return "", nil
+}
+
+// AdminUpdateUserSubscription directly overrides editable fields of a user subscription.
+// Only non-nil fields are written. Unlike the consumption path, no optimistic locking on
+// amount_used is applied — this is an explicit admin override.
+// When the resulting subscription is no longer effectively active, group downgrade
+// runs in the same transaction. cancelled stamps end_time=now only when transitioning
+// into cancelled; already-cancelled keeps historical end_time unless endTime is sent.
+// When the resulting row is effectively active, UpgradeGroup is restored onto the user
+// without overwriting PrevUserGroup.
+func AdminUpdateUserSubscription(userSubscriptionId int, amountUsed, amountTotal, endTime *int64, status *string) (*UserSubscription, error) {
+	if userSubscriptionId <= 0 {
+		return nil, errors.New("invalid userSubscriptionId")
+	}
+	now := common.GetTimestamp()
+	cacheGroup := ""
+	var userId int
+	var result UserSubscription
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+			return err
+		}
+		userId = sub.UserId
+
+		finalUsed := sub.AmountUsed
+		if amountUsed != nil {
+			finalUsed = *amountUsed
+		}
+		finalTotal := sub.AmountTotal
+		if amountTotal != nil {
+			finalTotal = *amountTotal
+		}
+		if finalTotal > 0 && finalUsed > finalTotal {
+			return errors.New("amount_used 不能大于 amount_total")
+		}
+
+		finalEnd := sub.EndTime
+		if endTime != nil {
+			finalEnd = *endTime
+		}
+		finalStatus := sub.Status
+		if status != nil {
+			finalStatus = *status
+		}
+		if finalStatus == SubscriptionStatusActive && finalEnd <= 0 {
+			return errors.New("active 订阅必须设置结束时间")
+		}
+		if finalStatus == SubscriptionStatusCancelled && sub.Status != SubscriptionStatusCancelled {
+			finalEnd = now
+		}
+		if finalStatus == SubscriptionStatusExpired && finalEnd == 0 {
+			finalEnd = now
+		}
+
+		updates := map[string]interface{}{
+			"updated_at": now,
+		}
+		if amountUsed != nil {
+			updates["amount_used"] = *amountUsed
+		}
+		if amountTotal != nil {
+			updates["amount_total"] = *amountTotal
+		}
+		if endTime != nil || finalEnd != sub.EndTime {
+			updates["end_time"] = finalEnd
+		}
+		if status != nil {
+			updates["status"] = *status
+		}
+
+		if err := tx.Model(&sub).Updates(updates).Error; err != nil {
+			return err
+		}
+
+		sub.AmountUsed = finalUsed
+		sub.AmountTotal = finalTotal
+		sub.EndTime = finalEnd
+		sub.Status = finalStatus
+
+		inactive := finalStatus != SubscriptionStatusActive || (finalEnd > 0 && finalEnd <= now)
+		if inactive {
+			target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
+			if err != nil {
+				return err
+			}
+			if target != "" {
+				cacheGroup = target
+			}
+		} else {
+			target, err := applyUpgradeGroupToUserTx(tx, sub.UserId, sub.UpgradeGroup)
+			if err != nil {
+				return err
+			}
+			if target != "" {
+				cacheGroup = target
+			}
+		}
+		return tx.Where("id = ?", userSubscriptionId).First(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	if cacheGroup != "" && userId > 0 {
+		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	return &result, nil
 }
 
 type SubscriptionPreConsumeResult struct {

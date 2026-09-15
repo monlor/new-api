@@ -30,6 +30,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
+  Sparkles,
   Ticket,
   User,
   Users,
@@ -106,6 +107,11 @@ export function useSidebarData(): SidebarData {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
+          },
+          {
+            title: t('Purchase Subscription'),
+            url: '/subscription-plans',
+            icon: Sparkles,
           },
           {
             title: t('Profile'),

@@ -336,7 +336,7 @@ func PasskeyLoginFinish(c *gin.Context) {
 		return
 	}
 
-	setupLogin(modelUser, c)
+	setupLoginWith2FA(modelUser, c)
 }
 
 func AdminResetPasskey(c *gin.Context) {

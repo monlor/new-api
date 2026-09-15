@@ -69,6 +69,7 @@ const DEFAULT_FORM_VALUES: SetupFormValues = {
   password: '',
   confirmPassword: '',
   usageMode: 'external',
+  setupToken: '',
 }
 
 export function SetupWizard() {
@@ -193,6 +194,7 @@ export function SetupWizard() {
         <AdminStep
           form={form}
           rootInitialized={Boolean(setupStatus?.root_init)}
+          tokenRequired={Boolean(setupStatus?.token_required)}
         />
       )
     }
@@ -203,6 +205,18 @@ export function SetupWizard() {
   }, [currentStep, setupStatus, form, watchedValues])
 
   const validateAdminStep = () => {
+    if (setupStatus?.token_required) {
+      const setupToken = form.getValues('setupToken')?.trim()
+      if (!setupToken) {
+        form.setError('setupToken', {
+          type: 'manual',
+          message: t('Please enter the setup token'),
+        })
+        toast.error(t('Please enter the setup token'))
+        return false
+      }
+    }
+
     if (setupStatus?.root_init) return true
 
     const username = form.getValues('username')?.trim()

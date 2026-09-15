@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useQuery } from '@tanstack/react-query'
 import { CalendarClock, CreditCard, RefreshCw, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { getCurrencyLabel } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -59,6 +61,7 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { getEnabledModels } from '@/features/channels/api'
 import {
   createPlan,
   updatePlan,
@@ -75,6 +78,7 @@ import {
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
+import { PlanDisplayModelsField } from './plan-display-models-field'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -103,6 +107,19 @@ export function SubscriptionsMutateDrawer({
     resolver: zodResolver(schema) as unknown as Resolver<PlanFormValues>,
     defaultValues: PLAN_FORM_DEFAULTS,
   })
+
+  const { data: enabledModelsData } = useQuery({
+    queryKey: ['channel_models_enabled'],
+    queryFn: getEnabledModels,
+  })
+
+  const modelOptions = useMemo(
+    () =>
+      (enabledModelsData?.data || [])
+        .filter((id): id is string => Boolean(id))
+        .map((id) => ({ value: id, label: id })),
+    [enabledModelsData]
+  )
 
   useEffect(() => {
     if (open) {
@@ -314,7 +331,7 @@ export function SubscriptionsMutateDrawer({
                   name='price_amount'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Actual Amount')}</FormLabel>
+                      <FormLabel>{t('Actual Amount (USD)')}</FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -336,7 +353,9 @@ export function SubscriptionsMutateDrawer({
                   name='total_amount'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Available amount')}</FormLabel>
+                      <FormLabel>
+                        {t('Available amount')} ({getCurrencyLabel()})
+                      </FormLabel>
                       <FormControl>
                         <Input
                           {...field}
@@ -479,7 +498,30 @@ export function SubscriptionsMutateDrawer({
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name='is_recommended'
+                  render={({ field }) => (
+                    <FormItem className={sideDrawerSwitchItemClassName()}>
+                      <FormLabel className='!mt-0'>
+                        {t('Recommended')}
+                      </FormLabel>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
               </div>
+
+              <PlanDisplayModelsField
+                control={form.control}
+                modelOptions={modelOptions}
+              />
             </SideDrawerSection>
 
             {/* Duration Settings */}

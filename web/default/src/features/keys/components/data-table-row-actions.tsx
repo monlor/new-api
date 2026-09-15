@@ -52,7 +52,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
-import { resolveChatUrl, type ChatPreset } from '@/features/chat/lib/chat-links'
+import {
+  resolveChatUrl,
+  shouldBlockHttpChatUrlWithKey,
+  type ChatPreset,
+} from '@/features/chat/lib/chat-links'
 import { sendToFluent } from '@/features/chat/lib/send-to-fluent'
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
@@ -149,6 +153,20 @@ export function DataTableRowActions<TData>({
 
       if (!resolvedUrl) {
         toast.error(t('Invalid chat link. Please contact your administrator.'))
+        return
+      }
+
+      if (
+        shouldBlockHttpChatUrlWithKey(resolvedUrl, {
+          apiKey: realKey,
+          template: preset.url,
+        })
+      ) {
+        toast.error(
+          t(
+            'This chat link would send your API key to a third-party website. Opening it has been blocked.'
+          )
+        )
         return
       }
 

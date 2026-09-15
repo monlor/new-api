@@ -163,6 +163,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	if !model.DisplayModelsWellFormed(req.Plan.DisplayModels) {
+		common.ApiErrorMsg(c, "展示模型列表格式错误")
+		return
+	}
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
@@ -230,6 +234,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	if !model.DisplayModelsWellFormed(req.Plan.DisplayModels) {
+		common.ApiErrorMsg(c, "展示模型列表格式错误")
+		return
+	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
@@ -243,6 +251,8 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"custom_seconds":             req.Plan.CustomSeconds,
 			"enabled":                    req.Plan.Enabled,
 			"sort_order":                 req.Plan.SortOrder,
+			"is_recommended":             req.Plan.IsRecommended,
+			"display_models":             req.Plan.DisplayModels,
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
@@ -448,4 +458,59 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+type AdminUpdateUserSubscriptionRequest struct {
+	AmountUsed  *int64  `json:"amount_used,omitempty"`
+	AmountTotal *int64  `json:"amount_total,omitempty"`
+	EndTime     *int64  `json:"end_time,omitempty"`
+	Status      *string `json:"status,omitempty"`
+}
+
+// AdminUpdateUserSubscription edits editable fields of a user subscription.
+func AdminUpdateUserSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminUpdateUserSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.AmountUsed == nil && req.AmountTotal == nil && req.EndTime == nil && req.Status == nil {
+		common.ApiErrorMsg(c, "没有需要更新的字段")
+		return
+	}
+	if req.Status != nil {
+		switch *req.Status {
+		case model.SubscriptionStatusActive, model.SubscriptionStatusExpired, model.SubscriptionStatusCancelled:
+		default:
+			common.ApiErrorMsg(c, "无效的状态值")
+			return
+		}
+	}
+	if req.AmountUsed != nil && *req.AmountUsed < 0 {
+		common.ApiErrorMsg(c, "已用额度不能为负数")
+		return
+	}
+	if req.AmountTotal != nil && *req.AmountTotal < 0 {
+		common.ApiErrorMsg(c, "总额度不能为负数")
+		return
+	}
+
+	sub, err := model.AdminUpdateUserSubscription(subId, req.AmountUsed, req.AmountTotal, req.EndTime, req.Status)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, sub.UserId, "user_subscription.admin_edit", map[string]interface{}{
+		"subscription_id": subId,
+		"amount_used":     req.AmountUsed,
+		"amount_total":    req.AmountTotal,
+		"end_time":        req.EndTime,
+		"status":          req.Status,
+	})
+	common.ApiSuccess(c, sub)
 }

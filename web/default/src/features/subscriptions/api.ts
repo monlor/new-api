@@ -21,6 +21,7 @@ import type {
   ApiResponse,
   PlanRecord,
   PlanPayload,
+  UserSubscription,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
   SubscriptionPayResponse,
@@ -102,6 +103,29 @@ export async function invalidateUserSubscription(
 ): Promise<ApiResponse<{ message?: string }>> {
   const res = await api.post(
     `/api/subscription/admin/user_subscriptions/${subId}/invalidate`
+  )
+  return res.data
+}
+
+/**
+ * Admin override of a single UserSubscription row. Partial update — only the
+ * provided fields are written; omitted ones are left untouched. Inactive
+ * results still downgrade the user's upgrade group; an effectively active
+ * row (status=active and end_time > now) restores UpgradeGroup without
+ * overwriting PrevUserGroup.
+ */
+export async function updateUserSubscription(
+  subId: number,
+  data: {
+    amount_used?: number
+    amount_total?: number
+    end_time?: number
+    status?: string
+  }
+): Promise<ApiResponse<UserSubscription>> {
+  const res = await api.put(
+    `/api/subscription/admin/user_subscriptions/${subId}`,
+    data
   )
   return res.data
 }

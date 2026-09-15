@@ -170,7 +170,7 @@ func GitHubOAuth(c *gin.Context) {
 		})
 		return
 	}
-	setupLogin(&user, c)
+	setupLoginWith2FA(&user, c)
 }
 
 func GitHubBind(c *gin.Context) {

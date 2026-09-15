@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { formatNumber, formatQuota, formatTokens } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { formatOriginalValueUsd } from '../lib/format'
 import type { UserUsageItem } from '../types'
 import { TrendSparkline } from './trend-sparkline'
 
@@ -93,6 +94,16 @@ export function useUserUsageColumns(): ColumnDef<UserUsageItem>[] {
         </span>
       ),
       size: 140,
+    },
+    {
+      accessorKey: 'original_value_usd',
+      header: t('Original Value'),
+      cell: ({ row }) => (
+        <span className='text-muted-foreground tabular-nums'>
+          {formatOriginalValueUsd(row.original.original_value_usd)}
+        </span>
+      ),
+      size: 120,
     },
     {
       accessorKey: 'percentage',

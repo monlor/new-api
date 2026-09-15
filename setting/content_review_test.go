@@ -45,6 +45,21 @@ func TestDefaultContentReviewPromptCoversOnlineAbuse(t *testing.T) {
 	}
 }
 
+func TestReviewRequestSampleRate(t *testing.T) {
+	if got := (*ContentReviewSetting)(nil).ReviewRequestSampleRate(); got != 1 {
+		t.Fatalf("nil setting got %v", got)
+	}
+	if got := (&ContentReviewSetting{RequestSampleRate: 0.25}).ReviewRequestSampleRate(); got != 0.25 {
+		t.Fatalf("got %v", got)
+	}
+	if got := (&ContentReviewSetting{RequestSampleRate: 2}).ReviewRequestSampleRate(); got != 1 {
+		t.Fatalf("clamp high got %v", got)
+	}
+	if got := (&ContentReviewSetting{RequestSampleRate: -1}).ReviewRequestSampleRate(); got != 0 {
+		t.Fatalf("clamp low got %v", got)
+	}
+}
+
 func TestReviewPromptFallsBackToDefault(t *testing.T) {
 	if got := (*ContentReviewSetting)(nil).ReviewPrompt(); got != DefaultContentReviewPrompt {
 		t.Fatal("nil setting should use the built-in default")

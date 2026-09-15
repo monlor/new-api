@@ -42,6 +42,9 @@ export const subscriptionPlanSchema = z.object({
   stripe_price_id: z.string().optional(),
   creem_product_id: z.string().optional(),
   waffo_pancake_product_id: z.string().optional(),
+  is_recommended: z.boolean().optional(),
+  /** Comma-separated model IDs shown as "hot models" on the purchase card. */
+  display_models: z.string().optional(),
 })
 
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
@@ -68,6 +71,39 @@ export const userSubscriptionSchema = z.object({
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
+
+/**
+ * Admin edit form for a single UserSubscription row.
+ * `cancelled` is kept so an already-invalidated row can still display; the
+ * edit UI does not offer it as a target.
+ *
+ * amount_total is edited as a display-currency amount (USD/CNY) and
+ * converted to/from raw quota units via quotaUnitsToDollars/
+ * parseQuotaFromDollars at the load/submit boundary (see
+ * user-subscription-edit-form.tsx), mirroring the plan editor's
+ * "Available amount" field.
+ *
+ * amount_used_percent replaces a raw amount_used input: admins adjust usage
+ * as a 0-100 percentage of amount_total (2 decimal places), which is
+ * converted back to raw quota units on submit. Meaningless when
+ * amount_total is 0 (unlimited) — the form disables the field in that case
+ * and leaves the subscription's existing amount_used untouched.
+ */
+export const userSubscriptionEditSchema = z
+  .object({
+    amount_used_percent: z.number().min(0).max(100),
+    amount_total: z.number().min(0),
+    end_time: z.number(),
+    status: z.enum(['active', 'expired', 'cancelled']),
+  })
+  .refine((data) => data.status !== 'active' || data.end_time > 0, {
+    message: 'Active subscriptions require an end time',
+    path: ['end_time'],
+  })
+
+export type UserSubscriptionEditForm = z.infer<
+  typeof userSubscriptionEditSchema
+>
 
 export interface ProviderSubscription {
   provider: string

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -22,7 +23,7 @@ func providerParams(name string) map[string]any {
 // GenerateOAuthCode generates a state code for OAuth CSRF protection
 func GenerateOAuthCode(c *gin.Context) {
 	session := sessions.Default(c)
-	state := common.GetRandomString(12)
+	state := common.GetRandomString(32)
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
@@ -56,7 +57,10 @@ func HandleOAuth(c *gin.Context) {
 
 	// 1. Validate state (CSRF protection)
 	state := c.Query("state")
-	if state == "" || session.Get("oauth_state") == nil || state != session.Get("oauth_state").(string) {
+	savedState, _ := session.Get("oauth_state").(string)
+	session.Delete("oauth_state")
+	_ = session.Save()
+	if state == "" || savedState == "" || subtle.ConstantTimeCompare([]byte(state), []byte(savedState)) != 1 {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": i18n.T(c, i18n.MsgOAuthStateInvalid),
@@ -124,7 +128,7 @@ func HandleOAuth(c *gin.Context) {
 	}
 
 	// 9. Setup login
-	setupLogin(user, c)
+	setupLoginWith2FA(user, c)
 }
 
 // handleOAuthBind handles binding OAuth account to existing user
@@ -256,7 +260,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	} else {
 		user.DisplayName = provider.GetName() + " User"
 	}
-	if oauthUser.Email != "" {
+	if oauthUser.Email != "" && !model.IsEmailAlreadyTaken(oauthUser.Email) {
 		user.Email = oauthUser.Email
 	}
 	user.Role = common.RoleCommonUser

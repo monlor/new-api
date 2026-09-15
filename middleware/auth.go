@@ -19,7 +19,6 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func validUserInfo(username string, role int) bool {
@@ -120,6 +119,16 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
+	userId, _ := id.(int)
+	if !useAccessToken {
+		if userCache, cacheErr := model.GetUserCache(userId); cacheErr == nil && userCache != nil && userCache.Role != 0 {
+			status = userCache.Status
+			role = userCache.Role
+			username = userCache.Username
+			c.Set("group", userCache.Group)
+			c.Set("user_group", userCache.Group)
+		}
+	}
 	if status.(int) == common.UserStatusDisabled {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -196,23 +205,25 @@ func RootAuth() func(c *gin.Context) {
 }
 
 func WssAuth(c *gin.Context) {
-
+	TokenAuth()(c)
 }
 
 // TokenOrUserAuth allows either session-based user auth or API token auth.
 // Used for endpoints that need to be accessible from both the dashboard and API clients.
 func TokenOrUserAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		// Try session auth first (dashboard users)
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id)
+			userId, _ := id.(int)
+			userCache, err := model.GetUserCache(userId)
+			if err == nil && userCache.Status == common.UserStatusEnabled {
+				c.Set("id", userId)
+				c.Set("role", userCache.Role)
+				userCache.WriteContext(c)
 				c.Next()
 				return
 			}
 		}
-		// Fall back to token auth (API clients)
 		TokenAuth()(c)
 	}
 }
@@ -239,18 +250,18 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		parts := strings.Split(key, "-")
 		key = parts[0]
 
-		token, err := model.GetTokenByKey(key, false)
+		token, err := model.ValidateUserToken(key)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusUnauthorized, gin.H{
-					"success": false,
-					"message": common.TranslateMessage(c, i18n.MsgTokenInvalid),
-				})
-			} else {
-				common.SysLog("TokenAuthReadOnly GetTokenByKey database error: " + err.Error())
+			if errors.Is(err, model.ErrDatabase) {
+				common.SysLog("TokenAuthReadOnly ValidateUserToken database error: " + err.Error())
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"success": false,
 					"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+				})
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"success": false,
+					"message": common.TranslateMessage(c, i18n.MsgTokenInvalid),
 				})
 			}
 			c.Abort()

@@ -40,6 +40,10 @@ export interface UserUsageSummary {
   active_users: number
   quota_growth_pct: number
   count_growth_pct: number
+  /** Estimated official USD value of the consumed quota, computed at each
+   *  model's cheapest available group × channel ratio (markup excluded).
+   *  Omitted/null when the backend cannot compute it. */
+  original_value_usd?: number | null
 }
 
 export interface UserUsageItem {
@@ -49,6 +53,9 @@ export interface UserUsageItem {
   count: number
   /** Consumed quota (raw quota units). */
   quota: number
+  /** Estimated official USD value for this user, at each model's cheapest
+   *  available group × channel ratio (markup excluded). */
+  original_value_usd?: number | null
   token_used: number
   /** Share of the period total quota, 0-100. Denominator is the whole-period
    *  total, so the current page's percentages sum to <= 100. */
@@ -78,6 +85,9 @@ export interface UserTokenUsageItem {
   token_name: string
   request_count: number
   quota: number
+  /** Estimated official USD value for this key, at each model's cheapest
+   *  available group × channel ratio (markup excluded). */
+  original_value_usd?: number | null
   token_used: number
   /** Unix seconds; 0 when never used within the window. */
   last_used_at: number

@@ -107,6 +107,9 @@ func CheckSetup() {
 		} else {
 			common.SysLog("system is not initialized and no root user exists")
 			constant.Setup = false
+			if !common.SetupSkipToken {
+				common.SysLog("SETUP_TOKEN (required for POST /api/setup): " + common.SetupToken)
+			}
 		}
 	} else {
 		// Setup record exists, system is initialized
@@ -426,6 +429,8 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`custom_seconds`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`enabled`" + ` numeric DEFAULT 1,
 ` + "`sort_order`" + ` integer DEFAULT 0,
+` + "`is_recommended`" + ` numeric DEFAULT 0,
+` + "`display_models`" + ` text DEFAULT '',
 ` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
 ` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
@@ -461,6 +466,8 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "custom_seconds", DDL: "`custom_seconds` bigint NOT NULL DEFAULT 0"},
 		{Name: "enabled", DDL: "`enabled` numeric DEFAULT 1"},
 		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
+		{Name: "is_recommended", DDL: "`is_recommended` numeric DEFAULT 0"},
+		{Name: "display_models", DDL: "`display_models` text DEFAULT ''"},
 		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
 		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},

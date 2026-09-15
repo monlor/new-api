@@ -21,7 +21,7 @@ import { type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 
-type StatCardTone = 'rose' | 'teal' | 'gray'
+type StatCardTone = 'rose' | 'teal' | 'blue' | 'gray'
 type StatCardSparklineVariant = 'bars' | 'line'
 type StatCardDetailTone =
   | 'default'
@@ -53,12 +53,14 @@ export interface StatCardProps {
 const TONE_CLASSES: Record<StatCardTone, string> = {
   rose: 'from-rose-500/80 via-rose-300/70 to-rose-200/20 dark:from-rose-400/70 dark:via-rose-500/30 dark:to-rose-500/5',
   teal: 'from-teal-500/80 via-teal-300/70 to-teal-200/20 dark:from-teal-400/70 dark:via-teal-500/30 dark:to-teal-500/5',
+  blue: 'from-blue-500/80 via-blue-300/70 to-blue-200/20 dark:from-blue-400/70 dark:via-blue-500/30 dark:to-blue-500/5',
   gray: 'from-muted-foreground/50 via-muted-foreground/20 to-transparent dark:from-muted-foreground/40 dark:via-muted-foreground/20',
 }
 
 const LINE_TONE_CLASSES: Record<StatCardTone, string> = {
   rose: 'text-warning',
   teal: 'text-primary',
+  blue: 'text-blue-500 dark:text-blue-400',
   gray: 'text-muted-foreground',
 }
 

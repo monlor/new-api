@@ -32,6 +32,8 @@ services:
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
+      - SESSION_COOKIE_SECURE=false
+      - SETUP_SKIP_TOKEN=true
     depends_on:
       redis:
         condition: service_started

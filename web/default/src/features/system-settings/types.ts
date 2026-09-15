@@ -342,8 +342,10 @@ export type SecuritySettings = {
   'content_review.block_threshold': number
   'content_review.fail_open': boolean
   'content_review.block_message': string
+  'content_review.request_sample_rate': number
   'content_review.pass_sample_rate': number
   'content_review.log_input_preview': boolean
+  'content_review.notify_admin': boolean
 }
 
 export type UpstreamChannel = {

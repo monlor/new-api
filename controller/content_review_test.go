@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -107,6 +108,95 @@ func setupContentReviewLogTestDB(t *testing.T) {
 	})
 	if err := db.AutoMigrate(&model.User{}, &model.Log{}, &model.ContentReviewLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+}
+
+func TestResolveContentReviewSampleRate(t *testing.T) {
+	cfg := &setting.ContentReviewSetting{RequestSampleRate: 0.4}
+	if got := resolveContentReviewSampleRate(nil, cfg); got != 0.4 {
+		t.Fatalf("nil context got %v", got)
+	}
+	if got := resolveContentReviewSampleRate(nil, nil); got != 1 {
+		t.Fatalf("nil cfg got %v", got)
+	}
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", http.NoBody)
+	if got := resolveContentReviewSampleRate(c, cfg); got != 0.4 {
+		t.Fatalf("missing user setting got %v", got)
+	}
+
+	common.SetContextKey(c, constant.ContextKeyUserSetting, dto.UserSetting{SkipContentReview: true})
+	if got := resolveContentReviewSampleRate(c, cfg); got != 0 {
+		t.Fatalf("skip got %v", got)
+	}
+
+	rate := 0.15
+	common.SetContextKey(c, constant.ContextKeyUserSetting, dto.UserSetting{ContentReviewSampleRate: &rate})
+	if got := resolveContentReviewSampleRate(c, cfg); got != 0.15 {
+		t.Fatalf("user override got %v", got)
+	}
+
+	tooHigh := 3.0
+	common.SetContextKey(c, constant.ContextKeyUserSetting, dto.UserSetting{ContentReviewSampleRate: &tooHigh})
+	if got := resolveContentReviewSampleRate(c, cfg); got != 1 {
+		t.Fatalf("clamp got %v", got)
+	}
+}
+
+func TestShouldSampleContentReviewRequest(t *testing.T) {
+	if shouldSampleContentReviewRequest(0) {
+		t.Fatal("0 should skip")
+	}
+	if shouldSampleContentReviewRequest(-1) {
+		t.Fatal("negative should skip")
+	}
+	if !shouldSampleContentReviewRequest(1) {
+		t.Fatal("1 should always run")
+	}
+}
+
+func TestNotifyAdminContentReviewDisabled(t *testing.T) {
+	notifyAdminContentReview(
+		contentReviewLogMeta{UserId: 1, Username: "alice"},
+		&service.ContentReviewResult{Confidence: 0.9, Reason: "abuse"},
+		&setting.ContentReviewSetting{NotifyAdmin: false},
+	)
+}
+
+func TestMarkUserHighRiskNotifiesOnlyOnFirstTransition(t *testing.T) {
+	setupContentReviewLogTestDB(t)
+	user := model.User{Username: "risk-user", Password: "password12", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	if err := model.DB.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	first, err := model.MarkUserHighRisk(user.Id, "first", 0.9)
+	if err != nil {
+		t.Fatalf("first mark: %v", err)
+	}
+	if !first {
+		t.Fatal("first mark should be a new high-risk transition")
+	}
+
+	second, err := model.MarkUserHighRisk(user.Id, "second", 0.95)
+	if err != nil {
+		t.Fatalf("second mark: %v", err)
+	}
+	if second {
+		t.Fatal("already high-risk user must not count as a new transition")
+	}
+
+	if err := model.ClearUserHighRisk(user.Id); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	again, err := model.MarkUserHighRisk(user.Id, "again", 0.8)
+	if err != nil {
+		t.Fatalf("after clear: %v", err)
+	}
+	if !again {
+		t.Fatal("after clearing high-risk, the next mark should notify again")
 	}
 }
 

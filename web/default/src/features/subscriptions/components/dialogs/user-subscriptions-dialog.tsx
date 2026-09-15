@@ -56,7 +56,13 @@ import {
   deleteUserSubscription,
 } from '../../api'
 import { formatTimestamp, planHasReset } from '../../lib'
-import type { PlanRecord, SubscriptionPlan, UserSubscriptionRecord } from '../../types'
+import type {
+  PlanRecord,
+  SubscriptionPlan,
+  UserSubscription,
+  UserSubscriptionRecord,
+} from '../../types'
+import { UserSubscriptionEditForm } from '../user-subscription-edit-form'
 
 interface Props {
   open: boolean
@@ -109,6 +115,7 @@ export function UserSubscriptionsDialog(props: Props) {
     type: 'invalidate' | 'delete'
     subId: number
   } | null>(null)
+  const [editTarget, setEditTarget] = useState<UserSubscription | null>(null)
 
   const planTitleMap = useMemo(() => {
     const map = new Map<number, string>()
@@ -201,7 +208,7 @@ export function UserSubscriptionsDialog(props: Props) {
   return (
     <>
       <Sheet open={props.open} onOpenChange={props.onOpenChange}>
-        <SheetContent className={sideDrawerContentClassName('sm:max-w-2xl')}>
+        <SheetContent className={sideDrawerContentClassName('sm:max-w-4xl')}>
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('User Subscription Management')}</SheetTitle>
             <SheetDescription>
@@ -380,6 +387,13 @@ export function UserSubscriptionsDialog(props: Props) {
                         <Button
                           size='sm'
                           variant='outline'
+                          onClick={() => setEditTarget(sub)}
+                        >
+                          {t('Edit')}
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='outline'
                           disabled={!isActive}
                           onClick={() =>
                             setConfirmAction({
@@ -411,6 +425,19 @@ export function UserSubscriptionsDialog(props: Props) {
           </div>
         </SheetContent>
       </Sheet>
+
+      {editTarget && (
+        <UserSubscriptionEditForm
+          subscription={editTarget}
+          open
+          onOpenChange={(v) => !v && setEditTarget(null)}
+          onSuccess={async () => {
+            setEditTarget(null)
+            await loadData()
+            props.onSuccess?.()
+          }}
+        />
+      )}
 
       {confirmAction && (
         <ConfirmDialog
