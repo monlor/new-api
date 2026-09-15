@@ -192,7 +192,17 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 **涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`dto/user_settings.go`、`dto/channel_settings.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/channels/**`、`web/default/src/features/usage-logs/**`、`web/classic/src/pages/Setting/Operation/SettingsLog.jsx`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
 
-## 十四、文档 (Docs)
+## 十四、管理员统计面板 (Statistics)
+
+- 新增 admin-only 统计接口分组 `/api/statistics`（`middleware.AdminAuth()`），供新「统计」页面使用
+  - `GET /api/statistics/users`：基于 `quota_data` 预聚合表按 `user_id` 聚合的用户用量列表（`MAX(username)` 展示名；`keyword` 至少 2 个字符才模糊匹配；`p`/`page_size` 分页、`quota DESC` 排序），附 KPI 汇总与等长上一周期环比，以及每行 12 点 sparkline（`trend`，一次聚合查询批量取，不按行发请求）
+  - `GET /api/statistics/users/tokens`：密钥粒度下钻。先在 **LOG_DB** 按 `token_id` 聚合（限定 `user_id` + `type=consume`），再到主库 `tokens` 用 `IN` 批量补 `name`/`status`，**不跨库 JOIN**；软删除的令牌返回 `status = -1`；响应绝不含 `Token.Key`
+  - `GET /api/statistics/revenue`：收入 KPI / 趋势 / 渠道占比 / Top 充值用户 / 最近充值记录。统一口径 `status='success' AND payment_provider <> 'balance' AND complete_time > 0`（余额抵扣不是真实收入，`complete_time=0` 为历史脏数据）。`money` 统一为系统 USD：Epay 的网关 CNY 按当前 `Price` 换算后再聚合
+- 分桶复用 `rankingBucketExpr(column, bucketSize)`（MySQL `FLOOR(col/N)*N`，SQLite/PostgreSQL `(col/N)*N`）；粒度按时间跨度自动选择（≤3 天用小时桶，否则天桶）
+
+**涉及文件：** `model/statistics_common.go`、`model/statistics_usedata.go`、`model/statistics_log.go`、`model/statistics_topup.go`、`controller/statistics_user.go`、`controller/statistics_revenue.go`、`router/api-router.go`、`web/default/src/features/statistics/**`、`web/default/src/routes/_authenticated/statistics/**`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/i18n/locales/*.json`
+
+## 十五、文档 (Docs)
 
 - AGENTS.md 为项目规范单一来源，CLAUDE.md 软链接指向它
 - 新增 agent-team harness 章节

@@ -99,6 +99,16 @@ function resolveUpdater<TValue>(
     : updater
 }
 
+/**
+ * Stable empty default for `columnFilters`. Passing the key through to
+ * TanStack's `state` with an `undefined` value overrides its internal default
+ * of `[]`, which makes `table.getState().columnFilters` undefined and crashes
+ * any consumer that reads `.length` (e.g. DataTableToolbar). Callers that do
+ * not control column filters must still see an empty array. A module-level
+ * constant keeps the reference stable across renders.
+ */
+const EMPTY_COLUMN_FILTERS: ColumnFiltersState = []
+
 function useControllableTableState<TValue>(
   controlledValue: TValue | undefined,
   defaultValue: TValue,
@@ -187,7 +197,7 @@ export function useDataTable<TData>(options: UseDataTableOptions<TData>) {
       columnVisibility,
       rowSelection,
       expanded,
-      columnFilters: options.columnFilters,
+      columnFilters: options.columnFilters ?? EMPTY_COLUMN_FILTERS,
       globalFilter: options.globalFilter,
       pagination,
     },

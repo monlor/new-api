@@ -135,7 +135,7 @@ export function CompactDateTimeRangePicker({
       </PopoverTrigger>
       <PopoverContent
         align='start'
-        className='w-[min(520px,calc(100vw-2rem))] p-3'
+        className='w-[calc(100vw-2rem)] p-3 sm:w-[min(640px,calc(100vw-2rem))]'
       >
         <div className='space-y-3'>
           <div className='grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-end'>

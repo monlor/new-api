@@ -175,3 +175,4 @@ This repo is a fork of [QuantumNous/new-api](https://github.com/QuantumNous/new-
 | 2026-06-20 | 初始构建（4 agents + 5 skills + 编排器） | 全体 | 引入 agent team 开发体系 |
 | 2026-06-22 | AGENTS.md 设为规范单一来源，CLAUDE.md 软链接指向它；新增 Rule 10 与 FORK_CHANGES.md | 文档 | fork 变更可追踪、便于同步上游 |
 | 2026-06-22 | 新增 `upstream-sync` skill（评估优先、筛 bugfix、渠道优先、读 FORK 评估冲突、选择性手动移植） | upstream-sync | 把上游同步方法论固化为可重复流程 |
+| 2026-09-15 | qa-reviewer 复验前端多文件改动时踩到 rsbuild dev server HMR 增量构建未生效导致的假阳性（产物与源码不一致） | qa-review | 记录教训：验证前端多文件改动前应 `docker compose restart frontend` 全量重建，不要只信 HMR |

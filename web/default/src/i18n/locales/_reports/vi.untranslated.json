@@ -1,7 +1,18 @@
 {
+  "Compared to the previous period": "Compared to the previous period",
+  "Consumption across all users in the selected period": "Consumption across all users in the selected period",
+  "Failed to load API key usage": "Failed to load API key usage",
+  "No recharges in the selected period": "No recharges in the selected period",
+  "No revenue in the selected period": "No revenue in the selected period",
+  "No user consumption recorded in the selected period.": "No user consumption recorded in the selected period.",
+  "Paid orders in the selected period": "Paid orders in the selected period",
+  "Prompt and completion tokens combined": "Prompt and completion tokens combined",
   "Failed to {{action}} users": "Failed to {{action}} users",
+  "Revenue change versus the previous period": "Revenue change versus the previous period",
+  "Total API calls in the selected period": "Total API calls in the selected period",
   "English is the default announcement and is required.": "English is the default announcement and is required.",
   "English is the default notice and is required.": "English is the default notice and is required.",
+  "Users with at least one request": "Users with at least one request",
   "When this language is empty, users see the English announcement.": "When this language is empty, users see the English announcement.",
   "When this language is empty, users see the English notice.": "When this language is empty, users see the English notice.",
   "You are about to delete {{count}} user(s). This action cannot be undone.": "You are about to delete {{count}} user(s). This action cannot be undone."

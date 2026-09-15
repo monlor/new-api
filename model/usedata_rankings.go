@@ -35,7 +35,7 @@ func GetRankingQuotaBuckets(startTime int64, endTime int64, bucketSize int64) ([
 	if bucketSize <= 0 {
 		bucketSize = 3600
 	}
-	bucketExpr := rankingBucketExpr(bucketSize)
+	bucketExpr := rankingBucketExpr("created_at", bucketSize)
 	var rows []RankingQuotaBucket
 	query := DB.Table("quota_data").
 		Select(fmt.Sprintf("model_name, %s as bucket, sum(token_used) as tokens", bucketExpr)).
@@ -48,11 +48,14 @@ func GetRankingQuotaBuckets(startTime int64, endTime int64, bucketSize int64) ([
 	return rows, err
 }
 
-func rankingBucketExpr(bucketSize int64) string {
-	if common.UsingMySQL {
-		return fmt.Sprintf("FLOOR(created_at / %d) * %d", bucketSize, bucketSize)
+func rankingBucketExpr(column string, bucketSize int64) string {
+	if bucketSize <= 0 {
+		bucketSize = StatisticsBucketHour
 	}
-	return fmt.Sprintf("(created_at / %d) * %d", bucketSize, bucketSize)
+	if common.UsingMySQL {
+		return fmt.Sprintf("FLOOR(%s / %d) * %d", column, bucketSize, bucketSize)
+	}
+	return fmt.Sprintf("(%s / %d) * %d", column, bucketSize, bucketSize)
 }
 
 func applyRankingQuotaTimeRange(query *gorm.DB, startTime int64, endTime int64) *gorm.DB {

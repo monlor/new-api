@@ -36,7 +36,7 @@ export interface StatCardDetail {
   tone?: StatCardDetailTone
 }
 
-interface StatCardProps {
+export interface StatCardProps {
   title: string
   value: string | number
   description: string
