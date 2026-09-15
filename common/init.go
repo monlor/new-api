@@ -66,7 +66,7 @@ func InitEnv() {
 	} else {
 		SetupToken = uuid.New().String()
 	}
-	SetupSkipToken = GetEnvOrDefaultBool("SETUP_SKIP_TOKEN", false)
+	SetupSkipToken = GetEnvOrDefaultBool("SETUP_SKIP_TOKEN", true)
 	if os.Getenv("CRYPTO_SECRET") != "" {
 		CryptoSecret = os.Getenv("CRYPTO_SECRET")
 	} else {
