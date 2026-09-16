@@ -150,6 +150,17 @@ function buildCodexAuthJson(apiKey: string): string {
   return JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
 }
 
+function buildGrokUserSettingsJson(apiKey: string, model: string): string {
+  return JSON.stringify(
+    {
+      apiKey,
+      defaultModel: model || 'grok-code-fast-1',
+    },
+    null,
+    2
+  )
+}
+
 function buildCurlCommand(
   apiKey: string,
   baseUrl: string,
@@ -368,6 +379,7 @@ export function UseApiKeyDialog(props: Props) {
     useState<CodexPlatform>('unix')
   const [opencodeSmallModel, setOpencodeSmallModel] = useState('')
   const [piPlatform, setPiPlatform] = useState<CodexPlatform>('unix')
+  const [grokPlatform, setGrokPlatform] = useState<CodexPlatform>('unix')
   const [activeTab, setActiveTab] = useState('claude-code')
 
   const endpointOptions = useMemo(
@@ -390,6 +402,7 @@ export function UseApiKeyDialog(props: Props) {
       setOpencodePlatform('unix')
       setOpencodeSmallModel('')
       setPiPlatform('unix')
+      setGrokPlatform('unix')
       setActiveTab('claude-code')
       setSelectedEndpoint('')
       setSelectedModel('')
@@ -445,7 +458,7 @@ export function UseApiKeyDialog(props: Props) {
   const opencodeSmall = opencodeSmallModel.trim()
   const opencodeModels = Array.from(
     new Set([opencodeDefault, opencodeSmall, ...chatModels].filter(Boolean))
-  )
+  ).sort((a, b) => a.localeCompare(b))
   const opencodeConfigInput = {
     apiKey,
     baseUrl: effectiveEndpoint,
@@ -458,7 +471,7 @@ export function UseApiKeyDialog(props: Props) {
   const opencodeAuth = buildOpenCodeAuthJson(opencodeConfigInput)
   const piModels = Array.from(
     new Set([selectedModel, ...chatModels].filter(Boolean))
-  )
+  ).sort((a, b) => a.localeCompare(b))
   const piConfigInput = {
     apiKey,
     baseUrl: effectiveEndpoint,
@@ -467,6 +480,7 @@ export function UseApiKeyDialog(props: Props) {
   }
   const piConfig = buildPiModelsJson(piConfigInput)
   const piAuth = buildPiAuthJson(piConfigInput)
+  const grokUserSettings = buildGrokUserSettingsJson(apiKey, selectedModel)
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -499,6 +513,16 @@ export function UseApiKeyDialog(props: Props) {
     piPlatform === 'unix'
       ? '~/.pi/agent/auth.json'
       : '%userprofile%\\.pi\\agent\\auth.json'
+
+  const grokUserSettingsPath =
+    grokPlatform === 'unix'
+      ? '~/.grok/user-settings.json'
+      : '%userprofile%\\.grok\\user-settings.json'
+
+  const grokEnvVars =
+    grokPlatform === 'unix'
+      ? `export GROK_BASE_URL="${effectiveEndpoint}/v1"`
+      : `set GROK_BASE_URL="${effectiveEndpoint}/v1"`
 
   const claudeEnvBlockLabel =
     claudePlatform === 'unix'
@@ -560,6 +584,9 @@ export function UseApiKeyDialog(props: Props) {
           </TabsTrigger>
           <TabsTrigger value='pi' className='h-7 px-3 text-xs'>
             Pi
+          </TabsTrigger>
+          <TabsTrigger value='grok' className='h-7 px-3 text-xs'>
+            Grok CLI
           </TabsTrigger>
           <TabsTrigger value='curl' className='h-7 px-3 text-xs'>
             cURL
@@ -704,13 +731,11 @@ export function UseApiKeyDialog(props: Props) {
               label={opencodeConfigPath}
               code={opencodeConfig}
               lang='json'
-              collapsible
             />
             <FileConfigBlock
               label={opencodeAuthPath}
               code={opencodeAuth}
               lang='json'
-              collapsible
             />
 
             <InfoBanner>
@@ -753,18 +778,69 @@ export function UseApiKeyDialog(props: Props) {
               label={piModelsPath}
               code={piConfig}
               lang='json'
-              collapsible
             />
             <FileConfigBlock
               label={piAuthPath}
               code={piAuth}
               lang='json'
-              collapsible
             />
 
             <InfoBanner>
               {t(
                 'Pi registers this as a custom OpenAI-compatible provider. After saving, open /model and select a model from this provider.'
+              )}
+            </InfoBanner>
+          </div>
+        </TabsContent>
+
+        {/* ── Grok CLI ── */}
+        <TabsContent
+          value='grok'
+          keepMounted
+          className='mt-0 space-y-0 outline-none data-hidden:hidden'
+        >
+          <p className='text-muted-foreground py-3 text-xs'>
+            {t(
+              'Save user-settings.json for the API key and default model, then set GROK_BASE_URL in your shell — Grok CLI has no config file field for the base URL.'
+            )}
+          </p>
+
+          <PlatformTabs
+            value={grokPlatform}
+            onChange={setGrokPlatform}
+            options={[
+              { value: 'unix', label: 'macOS / Linux' },
+              { value: 'windows', label: 'Windows' },
+            ]}
+          />
+
+          <div className='space-y-4 pt-4'>
+            <WarningBanner>
+              {t(
+                'user-settings.json contains your API key. Do not commit it to git. GROK_BASE_URL must be set in every session, or Grok CLI will call the official xAI API instead.'
+              )}
+            </WarningBanner>
+
+            <FileConfigBlock
+              label={grokUserSettingsPath}
+              code={grokUserSettings}
+              lang='json'
+            />
+
+            <div className='space-y-1.5'>
+              <SectionLabel variant='warning'>
+                {t('Required environment variable')}
+              </SectionLabel>
+              <FileConfigBlock
+                label={grokPlatform === 'unix' ? 'Terminal' : 'Command Prompt'}
+                code={grokEnvVars}
+                lang='bash'
+              />
+            </div>
+
+            <InfoBanner>
+              {t(
+                'For permanent configuration, add GROK_BASE_URL to ~/.bashrc, ~/.zshrc or the corresponding profile file.'
               )}
             </InfoBanner>
           </div>
