@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -50,6 +51,7 @@ type Log struct {
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
 	Group             string `json:"group" gorm:"index"`
 	Ip                string `json:"ip" gorm:"index;default:''"`
+	UserAgent         string `json:"user_agent" gorm:"default:''"`
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
@@ -71,6 +73,8 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
 		logs[i].ChannelId = 0
+		logs[i].Ip = ""
+		logs[i].UserAgent = ""
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
@@ -94,46 +98,31 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	return logs, err
 }
 
+// RecordLog 记录运营类事件（签到/2FA/邀请赠送/充值等），写入独立的 system_logs 表。
+// 调用方仍传入 model/log.go 的旧 LogType* 常量（签名不变），内部转发时映射到
+// SystemLogType* 命名空间。logs 表（使用日志）只由 RecordConsumeLog/RecordErrorLog 写入。
 func RecordLog(userId int, logType int, content string) {
-	if logType == LogTypeConsume && !common.LogConsumeEnabled {
-		return
-	}
-	username, _ := GetUsernameById(userId, false)
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      logType,
-		Content:   content,
-	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		common.SysLog("failed to record log: " + err.Error())
-	}
+	RecordSystemLog(SystemLogParams{
+		UserId:  userId,
+		Type:    legacyLogTypeToSystemLogType(logType),
+		Content: content,
+	})
 }
 
-// RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
+// RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info。
 func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
-	if logType == LogTypeConsume && !common.LogConsumeEnabled {
-		return
-	}
-	username, _ := GetUsernameById(userId, false)
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      logType,
-		Content:   content,
-	}
+	var other map[string]interface{}
 	if len(adminInfo) > 0 {
-		other := map[string]interface{}{
+		other = map[string]interface{}{
 			"admin_info": adminInfo,
 		}
-		log.Other = common.MapToJsonStr(other)
 	}
-	if err := LOG_DB.Create(log).Error; err != nil {
-		common.SysLog("failed to record log: " + err.Error())
-	}
+	RecordSystemLog(SystemLogParams{
+		UserId:  userId,
+		Type:    legacyLogTypeToSystemLogType(logType),
+		Content: content,
+		Other:   other,
+	})
 }
 
 // buildOpField 构建语言无关的操作描述（写入 Other.op）。
@@ -159,18 +148,14 @@ func RecordLoginLog(userId int, username string, content string, ip string, acti
 		other[k] = v
 	}
 	other["op"] = buildOpField(action, params)
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeLogin,
-		Content:   content,
-		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
-	}
-	if err := LOG_DB.Create(log).Error; err != nil {
-		common.SysLog("failed to record login log: " + err.Error())
-	}
+	RecordSystemLog(SystemLogParams{
+		UserId:   userId,
+		Username: username,
+		Type:     SystemLogTypeLogin,
+		Content:  content,
+		Ip:       ip,
+		Other:    other,
+	})
 }
 
 // RecordOperationAuditLog 记录管理/高危操作审计日志（type=LogTypeManage）。
@@ -190,18 +175,14 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	if len(auditInfo) > 0 {
 		other["audit_info"] = auditInfo
 	}
-	log := &Log{
-		UserId:    logUserId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeManage,
-		Content:   content,
-		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
-	}
-	if err := LOG_DB.Create(log).Error; err != nil {
-		common.SysLog("failed to record operation audit log: " + err.Error())
-	}
+	RecordSystemLog(SystemLogParams{
+		UserId:   logUserId,
+		Username: username,
+		Type:     SystemLogTypeManage,
+		Content:  content,
+		Ip:       ip,
+		Other:    other,
+	})
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
@@ -217,19 +198,14 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	other := map[string]interface{}{
 		"admin_info": adminInfo,
 	}
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeTopup,
-		Content:   content,
-		Ip:        callerIp,
-		Other:     common.MapToJsonStr(other),
-	}
-	err := LOG_DB.Create(log).Error
-	if err != nil {
-		common.SysLog("failed to record topup log: " + err.Error())
-	}
+	RecordSystemLog(SystemLogParams{
+		UserId:   userId,
+		Username: username,
+		Type:     SystemLogTypeTopup,
+		Content:  content,
+		Ip:       callerIp,
+		Other:    other,
+	})
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
@@ -239,35 +215,24 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeError,
-		Content:          content,
-		PromptTokens:     0,
-		CompletionTokens: 0,
-		TokenName:        tokenName,
-		ModelName:        modelName,
-		Quota:            0,
-		ChannelId:        channelId,
-		TokenId:          tokenId,
-		UseTime:          useTimeSeconds,
-		IsStream:         isStream,
-		Group:            group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         common.GetTimestamp(),
+		Type:              LogTypeError,
+		Content:           content,
+		PromptTokens:      0,
+		CompletionTokens:  0,
+		TokenName:         tokenName,
+		ModelName:         modelName,
+		Quota:             0,
+		ChannelId:         channelId,
+		TokenId:           tokenId,
+		UseTime:           useTimeSeconds,
+		IsStream:          isStream,
+		Group:             group,
+		Ip:                c.ClientIP(),
+		UserAgent:         c.Request.UserAgent(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
@@ -302,35 +267,24 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
 	log := &Log{
-		UserId:           userId,
-		Username:         username,
-		CreatedAt:        common.GetTimestamp(),
-		Type:             LogTypeConsume,
-		Content:          params.Content,
-		PromptTokens:     params.PromptTokens,
-		CompletionTokens: params.CompletionTokens,
-		TokenName:        params.TokenName,
-		ModelName:        params.ModelName,
-		Quota:            params.Quota,
-		ChannelId:        params.ChannelId,
-		TokenId:          params.TokenId,
-		UseTime:          params.UseTimeSeconds,
-		IsStream:         params.IsStream,
-		Group:            params.Group,
-		Ip: func() string {
-			if needRecordIp {
-				return c.ClientIP()
-			}
-			return ""
-		}(),
+		UserId:            userId,
+		Username:          username,
+		CreatedAt:         common.GetTimestamp(),
+		Type:              LogTypeConsume,
+		Content:           params.Content,
+		PromptTokens:      params.PromptTokens,
+		CompletionTokens:  params.CompletionTokens,
+		TokenName:         params.TokenName,
+		ModelName:         params.ModelName,
+		Quota:             params.Quota,
+		ChannelId:         params.ChannelId,
+		TokenId:           params.TokenId,
+		UseTime:           params.UseTimeSeconds,
+		IsStream:          params.IsStream,
+		Group:             params.Group,
+		Ip:                c.ClientIP(),
+		UserAgent:         c.Request.UserAgent(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
 		Other:             otherStr,
@@ -358,17 +312,37 @@ type RecordTaskBillingLogParams struct {
 	Other     map[string]interface{}
 }
 
+// RecordTaskBillingLog 记录异步任务（Midjourney/Suno/视频等）的计费结算。
+// LogTypeConsume 属于使用日志，继续写入 logs 表；其他类型（如 LogTypeRefund）
+// 属于运营类事件，转发到独立的 system_logs 表。
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
-	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
-		return
-	}
-	username, _ := GetUsernameById(params.UserId, false)
 	tokenName := ""
 	if params.TokenId > 0 {
 		if token, err := GetTokenById(params.TokenId); err == nil {
 			tokenName = token.Name
 		}
 	}
+	if params.LogType != LogTypeConsume {
+		username, _ := GetUsernameById(params.UserId, false)
+		RecordSystemLog(SystemLogParams{
+			UserId:    params.UserId,
+			Username:  username,
+			Type:      legacyLogTypeToSystemLogType(params.LogType),
+			Content:   params.Content,
+			Quota:     params.Quota,
+			ChannelId: params.ChannelId,
+			TokenId:   params.TokenId,
+			TokenName: tokenName,
+			ModelName: params.ModelName,
+			Group:     params.Group,
+			Other:     params.Other,
+		})
+		return
+	}
+	if !common.LogConsumeEnabled {
+		return
+	}
+	username, _ := GetUsernameById(params.UserId, false)
 	log := &Log{
 		UserId:    params.UserId,
 		Username:  username,
@@ -389,12 +363,18 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
+// usageLogTypes 使用日志（logs 表）现在只展示 AI 调用相关记录：正常消费 + 错误。
+// 充值/管理/系统/退款/登录等运营类事件已改为写入独立的 system_logs 表。
+var usageLogTypes = []int{LogTypeConsume, LogTypeError}
+
 func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB
-	} else {
+		tx = LOG_DB.Where("logs.type IN ?", usageLogTypes)
+	} else if slices.Contains(usageLogTypes, logType) {
 		tx = LOG_DB.Where("logs.type = ?", logType)
+	} else {
+		return nil, 0, nil
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -481,9 +461,11 @@ const logSearchCountLimit = 10000
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
-	} else {
+		tx = LOG_DB.Where("logs.user_id = ? and logs.type IN ?", userId, usageLogTypes)
+	} else if slices.Contains(usageLogTypes, logType) {
 		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+	} else {
+		return nil, 0, nil
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -630,17 +612,21 @@ func DeleteOldLog(ctx context.Context, targetTimestamp int64, limit int) (int64,
 
 const logCleanupBatchSize = 1000
 
-// CleanupExpiredLogs deletes usage logs and content review logs older than retentionDays.
+// CleanupExpiredLogs deletes usage logs, system logs, and content review logs older than retentionDays.
 // retentionDays <= 0 keeps all records.
-func CleanupExpiredLogs(ctx context.Context, retentionDays int) (logCount int64, reviewCount int64, err error) {
+func CleanupExpiredLogs(ctx context.Context, retentionDays int) (logCount int64, systemCount int64, reviewCount int64, err error) {
 	if retentionDays <= 0 {
-		return 0, 0, nil
+		return 0, 0, 0, nil
 	}
 	targetTimestamp := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
 	logCount, err = DeleteOldLog(ctx, targetTimestamp, logCleanupBatchSize)
 	if err != nil {
-		return logCount, 0, err
+		return logCount, 0, 0, err
+	}
+	systemCount, err = DeleteOldSystemLog(ctx, targetTimestamp, logCleanupBatchSize)
+	if err != nil {
+		return logCount, systemCount, 0, err
 	}
 	reviewCount, err = DeleteOldContentReviewLog(ctx, targetTimestamp, logCleanupBatchSize, "all")
-	return logCount, reviewCount, err
+	return logCount, systemCount, reviewCount, err
 }

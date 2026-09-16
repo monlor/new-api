@@ -55,16 +55,16 @@ func runLogCleanupOnce() {
 	}
 
 	ctx := context.Background()
-	logCount, reviewCount, err := model.CleanupExpiredLogs(ctx, days)
+	logCount, systemCount, reviewCount, err := model.CleanupExpiredLogs(ctx, days)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("log cleanup task failed: %v", err))
 		return
 	}
-	if logCount == 0 && reviewCount == 0 {
+	if logCount == 0 && systemCount == 0 && reviewCount == 0 {
 		return
 	}
 	logger.LogInfo(ctx, fmt.Sprintf(
-		"log cleanup: usage=%d review=%d retention_days=%d",
-		logCount, reviewCount, days,
+		"log cleanup: usage=%d system=%d review=%d retention_days=%d",
+		logCount, systemCount, reviewCount, days,
 	))
 }

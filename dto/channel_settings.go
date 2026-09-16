@@ -7,6 +7,32 @@ type ChannelSettings struct {
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	RateLimitCount         int    `json:"rate_limit_count,omitempty"`
+	RateLimitDurationMs    int    `json:"rate_limit_duration_ms,omitempty"`
+	RateLimitWaitMs        *int   `json:"rate_limit_wait_ms,omitempty"`
+}
+
+const (
+	DefaultChannelRateLimitDurationMs = 1000
+	DefaultChannelRateLimitWaitMs     = 10000
+)
+
+func (s ChannelSettings) GetRateLimitDurationMs() int {
+	if s.RateLimitDurationMs <= 0 {
+		return DefaultChannelRateLimitDurationMs
+	}
+	return s.RateLimitDurationMs
+}
+
+func (s ChannelSettings) GetRateLimitWaitMs() int {
+	if s.RateLimitWaitMs == nil {
+		return DefaultChannelRateLimitWaitMs
+	}
+	return *s.RateLimitWaitMs
+}
+
+func (s ChannelSettings) HasRateLimit() bool {
+	return s.RateLimitCount > 0
 }
 
 type VertexKeyType string

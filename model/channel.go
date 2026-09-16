@@ -971,6 +971,15 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
+	if channelParams.RateLimitCount < 0 {
+		return errors.New("rate_limit_count cannot be negative")
+	}
+	if channelParams.RateLimitDurationMs < 0 {
+		return errors.New("rate_limit_duration_ms cannot be negative")
+	}
+	if channelParams.RateLimitWaitMs != nil && *channelParams.RateLimitWaitMs < 0 {
+		return errors.New("rate_limit_wait_ms cannot be negative")
+	}
 	return nil
 }
 

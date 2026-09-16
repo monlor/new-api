@@ -453,6 +453,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const showTiming = isTimingLogType(props.log.type)
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  const showAdminUserAgent =
+    !!props.log.user_agent && (showTiming || (props.isAdmin && isTopup))
   const adminInfo = other?.admin_info
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
@@ -648,6 +650,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   {props.log.ip}
                 </span>
               }
+              mono
+            />
+          )}
+
+          {showAdminUserAgent && (
+            <DetailRow
+              label={t('User Agent')}
+              value={props.log.user_agent}
               mono
             />
           )}

@@ -200,28 +200,30 @@ func GetChannel(group string, model string, retry int, tokenBillingType int) (*C
 			return nil, err
 		}
 	}
-	channel := Channel{}
-	if len(abilities) > 0 {
-		// Randomly choose one
-		weightSum := uint(0)
-		for _, ability_ := range abilities {
-			weightSum += ability_.Weight + 10
-		}
-		// Randomly choose one
-		weight := common.GetRandomInt(int(weightSum))
-		for _, ability_ := range abilities {
-			weight -= int(ability_.Weight) + 10
-			//log.Printf("weight: %d, ability weight: %d", weight, *ability_.Weight)
-			if weight <= 0 {
-				channel.Id = ability_.ChannelId
-				break
-			}
-		}
-	} else {
+	if len(abilities) == 0 {
 		return nil, nil
 	}
-	err = DB.First(&channel, "id = ?", channel.Id).Error
-	return &channel, err
+	ids := make([]int, 0, len(abilities))
+	seen := make(map[int]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if _, ok := seen[ability.ChannelId]; ok {
+			continue
+		}
+		seen[ability.ChannelId] = struct{}{}
+		ids = append(ids, ability.ChannelId)
+	}
+	var candidates []*Channel
+	if err = DB.Where("id IN ?", ids).Find(&candidates).Error; err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	picked := pickChannelByWeightAndLoad(candidates)
+	if picked == nil {
+		return nil, nil
+	}
+	return picked, nil
 }
 
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {

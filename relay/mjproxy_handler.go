@@ -223,6 +223,14 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
+	if info.ChannelMeta != nil {
+		if apiErr := service.WaitChannelRateLimitSetting(c, info.ChannelId, info.ChannelSetting); apiErr != nil {
+			return &dto.MidjourneyResponse{
+				Code:        constant.MjChannelRateLimited,
+				Description: apiErr.Error(),
+			}
+		}
+	}
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
@@ -480,6 +488,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			}
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
 			c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
 			logger.LogDebug(c, "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
 		}
@@ -528,6 +537,21 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		return &dto.MidjourneyResponse{
 			Code:        4,
 			Description: "quota_not_enough",
+		}
+	}
+
+	channelId := c.GetInt("channel_id")
+	if channelId == 0 {
+		channelId = relayInfo.ChannelId
+	}
+	setting := relayInfo.ChannelSetting
+	if ctxSetting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting); ok {
+		setting = ctxSetting
+	}
+	if apiErr := service.WaitChannelRateLimitSetting(c, channelId, setting); apiErr != nil {
+		return &dto.MidjourneyResponse{
+			Code:        constant.MjChannelRateLimited,
+			Description: apiErr.Error(),
 		}
 	}
 

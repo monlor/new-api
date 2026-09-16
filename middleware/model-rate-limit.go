@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
@@ -90,7 +91,9 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 			return
 		}
 		if !allowed {
-			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount))
+			msg := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount)
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, msg)
+			model.RecordRejectionLog(c, model.SystemLogTypeRateLimit, "rate_limit_success_exceeded", msg, http.StatusTooManyRequests)
 			return
 		}
 
@@ -114,7 +117,9 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 			}
 
 			if !allowed {
-				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount))
+				msg := fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount)
+				abortWithOpenAiMessage(c, http.StatusTooManyRequests, msg)
+				model.RecordRejectionLog(c, model.SystemLogTypeRateLimit, "rate_limit_total_exceeded", msg, http.StatusTooManyRequests)
 			}
 		}
 
@@ -139,8 +144,9 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 
 		// 1. 检查总请求数限制（当totalMaxCount为0时跳过）
 		if totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, totalMaxCount, duration) {
-			c.Status(http.StatusTooManyRequests)
-			c.Abort()
+			msg := fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount)
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, msg)
+			model.RecordRejectionLog(c, model.SystemLogTypeRateLimit, "rate_limit_total_exceeded", msg, http.StatusTooManyRequests)
 			return
 		}
 
@@ -148,8 +154,9 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 		// 使用一个临时key来检查限制，这样可以避免实际记录
 		checkKey := successKey + "_check"
 		if !inMemoryRateLimiter.Request(checkKey, successMaxCount, duration) {
-			c.Status(http.StatusTooManyRequests)
-			c.Abort()
+			msg := fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount)
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, msg)
+			model.RecordRejectionLog(c, model.SystemLogTypeRateLimit, "rate_limit_success_exceeded", msg, http.StatusTooManyRequests)
 			return
 		}
 

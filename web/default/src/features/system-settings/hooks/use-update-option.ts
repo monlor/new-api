@@ -24,7 +24,6 @@ import type { UpdateOptionRequest } from '../types'
 
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = [
-  'theme.frontend',
   'theme.default_color_scheme',
   'theme.default_preset',
   'theme.default_font',

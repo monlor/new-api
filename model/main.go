@@ -295,9 +295,12 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
-	// Separate LOG_SQL_DSN: ContentReviewLog lives only on LOG_DB (migrateLOGDB).
+	// Separate LOG_SQL_DSN: ContentReviewLog/SystemLog live only on LOG_DB (migrateLOGDB).
 	if os.Getenv("LOG_SQL_DSN") == "" {
 		if err := DB.AutoMigrate(&ContentReviewLog{}); err != nil {
+			return err
+		}
+		if err := DB.AutoMigrate(&SystemLog{}); err != nil {
 			return err
 		}
 	}
@@ -425,6 +428,10 @@ func migrateDBFast() error {
 			model interface{}
 			name  string
 		}{&ContentReviewLog{}, "ContentReviewLog"})
+		migrations = append(migrations, struct {
+			model interface{}
+			name  string
+		}{&SystemLog{}, "SystemLog"})
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -468,6 +475,9 @@ func migrateLOGDB() error {
 		return err
 	}
 	if err = LOG_DB.AutoMigrate(&ContentReviewLog{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&SystemLog{}); err != nil {
 		return err
 	}
 	return nil

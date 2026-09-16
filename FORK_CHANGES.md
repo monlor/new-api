@@ -72,7 +72,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 管理员分配的订阅（`plan_id <= 0`）支持自定义名称：`UserSubscription` 新增 `CustomName`（`json:"custom_name"`、`varchar(128)`，纯 GORM AutoMigrate 覆盖三库，无需手写 DDL），`AdminAssignCustomSubscription()` 增加尾参 `customName string`（`strings.TrimSpace` 后落库），`AdminUpdateUserSubscription()` 增加 nil-gated 的 `customName *string`（与 `allowedModels` 同模式）并纳入审计字段；controller 两个请求体分别新增 `custom_name` / `*custom_name` 并做 128 字符（rune）上限校验；管理端弹窗与钱包「我的订阅」在 `plan_id <= 0` 时均以 `custom_name || t('Custom assignment')` 展示
 - 管理员订阅 UI 补齐自定义名称与展示排序：自定义分配表单新增「订阅名称」输入（留空回落默认名），单条订阅编辑抽屉仅在 `plan_id <= 0` 时渲染该字段（套餐订阅沿用套餐标题），提交走与 `allowed_models` 一致的 dirty-gate 增量写入；钱包「我的订阅」与 `user-subscriptions-dialog.tsx` 共用 `compareSubscriptionsForDisplay` 做纯展示排序——有效在前，其中自定义分配（`plan_id <= 0`）> 管理员套餐 > 购买，同级再按 `end_time` 升序，无效的按 `end_time` 倒序垫底，与后端扣费候选顺序一致但完全独立实现
 
-**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/subscription_allowed_models_test.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`service/channel_select.go`、`middleware/distributor.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/subscriptions/lib/model-value.ts`、`web/default/src/features/subscriptions/components/subscriptions-mutate-drawer.tsx`、`web/default/src/features/wallet/`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/subscription_allowed_models_test.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`service/channel_select.go`、`middleware/distributor.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/subscriptions/lib/model-value.ts`、`web/default/src/features/subscriptions/components/subscriptions-mutate-drawer.tsx`、`web/default/src/features/wallet/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
 
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
@@ -116,8 +116,9 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 - 管理员可配置全站默认主题
 - Header 加 ThemeSwitch，ConfigDrawer 仅管理员可见
+- 前端锁定为 `web/default`：移除 classic 主题切换入口、embed 与构建产物，`theme.frontend` 只接受 `default`
 
-**涉及文件：** `setting/system_setting/theme.go`、`model/option.go`、`web/default/src/lib/theme-customization.ts`、`web/default/src/styles/theme*.css`、`web/default/src/styles/index.css`
+**涉及文件：** `setting/system_setting/theme.go`、`model/option.go`、`controller/option.go`、`main.go`、`router/web-router.go`、`common/embed-file-system.go`、`common/constants.go`、`Dockerfile`、`Dockerfile.dev`、`web/package.json`、`web/default/src/lib/theme-customization.ts`、`web/default/src/styles/theme*.css`、`web/default/src/styles/index.css`、`web/default/src/features/system-settings/`
 
 ## 七、API 密钥与定价页 UX (Keys & Pricing)
 
@@ -132,7 +133,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - Pi 快速配置：Use API Key 弹窗新增 Pi 配置（`~/.pi/agent/models.json` 只写自定义供应商/`openai-completions`/`compat`/模型限额，API key 按官方写入 `~/.pi/agent/auth.json` 的 `{ type: "api_key", key }`；内置供应商 id 如 `openai`/`anthropic` 会加 `newapi-` 前缀避免覆盖 Pi 内置目录）
 - 创建 API Key 时自动选中第一个可用分组（开启 DefaultUseAutoGroup 且存在 auto 时仍优先 auto）
 
-**涉及文件：** `web/default/src/routes/pricing/index.tsx`、定价/keys 相关前端组件（含 `web/default/src/features/keys/components/dialogs/{cc-switch-dialog,use-api-key-dialog}.tsx`、`web/default/src/features/keys/lib/{opencode-config,pi-config}.ts`、`web/default/src/features/keys/lib/api-key-form.ts`、`web/default/src/features/keys/components/api-keys-mutate-drawer.tsx`）、`web/classic/src/components/table/tokens/modals/{CCSwitchModal,EditTokenModal}.jsx`、`constant/context_key.go`、`common/constants.go`
+**涉及文件：** `web/default/src/routes/pricing/index.tsx`、定价/keys 相关前端组件（含 `web/default/src/features/keys/components/dialogs/{cc-switch-dialog,use-api-key-dialog}.tsx`、`web/default/src/features/keys/lib/{opencode-config,pi-config}.ts`、`web/default/src/features/keys/lib/api-key-form.ts`、`web/default/src/features/keys/components/api-keys-mutate-drawer.tsx`）、`constant/context_key.go`、`common/constants.go`
 
 ## 八、设置与仪表盘 UI (Settings & Dashboard)
 
@@ -206,12 +207,12 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - block 拦截（含 fail-closed）写入使用日志的错误记录（type=error），不依赖 `ERROR_LOG_ENABLED`；含置信度与拦截原因
 - 独立 `content_review_logs`（LOG_DB）：每条审查（pass/flag/block/error）都落库，含审查模型 tokens、预估成本、渠道、耗时；不向用户扣费、不进用量统计
 - 管理员审查日志页 `/usage-logs/review`：筛选判定/模型/用户、统计条、按时间清理（仅 pass 或全部）；列表展示截断后的原因，悬停显示完整预览
-- 现有「清理历史日志」同时删除审查日志；`LogRetentionDays` 按保留天数定时自动清理用量日志与审查日志（0=永久保留）；pass 可配采样率，输入预览默认关闭
+- 现有「清理历史日志」同时删除审查日志与系统日志；`LogRetentionDays` 按保留天数定时自动清理用量日志、系统日志与审查日志（0=永久保留）；pass 可配采样率，输入预览默认关闭
 - 跳过内容审查开关：用户级（存入 `dto.UserSetting` JSON blob 的 `skip_content_review`，管理员端点 `PUT /api/user/:id/content_review_skip`，写审计日志 `user.content_review_skip`）与渠道级（存入 `dto.ChannelOtherSettings` 的 `skip_content_review`）；命中跳过时整个 `reviewUserPrompt` 不执行，也不产生审查日志与审查模型调用。渠道级仅在请求进入 `Relay()` 前已固定渠道时生效（管理员 API 密钥带显式 channel-id 后缀），渠道 Test 按钮与普通分组负载均衡均不生效
 - 审查请求抽查：全局 `content_review.request_sample_rate`（0–1，默认 1）按用户抽查是否调用审查模型；用户级 `content_review_sample_rate`（`PUT /api/user/:id/content_review_sample`，nil=沿用全局）覆盖全局；`skip_content_review` 仍为 0。未抽中的请求不调审查模型、不写审查日志
 - 管理员通知：`content_review.notify_admin`（默认关）开启后，仅在用户**从未高风险变为高风险**时通过 `NotifyRootUser` 通知根管理员（邮件/Webhook/Bark/Gotify，受现有通知限流约束）。同一账号后续命中只刷新高风险原因，不再通知；管理员清除高风险后再次命中会再通知一次
 
-**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`service/user_notify.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`dto/user_settings.go`、`dto/channel_settings.go`、`dto/notify.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/channels/**`、`web/default/src/features/usage-logs/**`、`web/classic/src/pages/Setting/Operation/SettingsLog.jsx`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `setting/content_review.go`、`service/content_review.go`、`service/content_review_test.go`、`service/log_cleanup_task.go`、`service/user_notify.go`、`controller/content_review.go`、`controller/content_review_test.go`、`controller/content_review_log.go`、`controller/log.go`、`controller/relay.go`、`controller/user.go`、`controller/audit.go`、`common/constants.go`、`dto/user_settings.go`、`dto/channel_settings.go`、`dto/notify.go`、`model/content_review_log.go`、`model/log.go`、`model/option.go`、`model/main.go`、`model/user.go`、`model/ability.go`、`main.go`、`types/error.go`、`relay/channel/api_request.go`、`router/api-router.go`、`middleware/audit.go`、`web/default/src/features/system-settings/security/**`、`web/default/src/features/system-settings/maintenance/log-settings-section.tsx`、`web/default/src/features/users/**`、`web/default/src/features/channels/**`、`web/default/src/features/usage-logs/**`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/hooks/use-sidebar-config.ts`、`web/default/src/i18n/locales/*.json`
 
 ## 十四、管理员统计面板 (Statistics)
 
@@ -259,4 +260,16 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 模型列在思考强度徽章旁只展示请求模型名，不再带上游映射弹层。
 
-**涉及文件（前端）：** `web/default/src/features/usage-logs/types.ts`、`web/default/src/features/usage-logs/lib/reasoning-effort.ts`、`web/default/src/features/usage-logs/components/reasoning-effort-badge.tsx`、`web/default/src/features/usage-logs/components/columns/common-logs-columns.tsx`、`web/default/src/features/usage-logs/components/dialogs/details-dialog.tsx`、`web/classic/src/hooks/usage-logs/useUsageLogsData.jsx`、`web/default/src/i18n/locales/*.json`、`web/classic/src/i18n/locales/*.json`
+**涉及文件（前端）：** `web/default/src/features/usage-logs/types.ts`、`web/default/src/features/usage-logs/lib/reasoning-effort.ts`、`web/default/src/features/usage-logs/components/reasoning-effort-badge.tsx`、`web/default/src/features/usage-logs/components/columns/common-logs-columns.tsx`、`web/default/src/features/usage-logs/components/dialogs/details-dialog.tsx`、`web/default/src/i18n/locales/*.json`
+
+## 十八、渠道周期限流 (Channel Rate Limit)
+
+按渠道配置滑动窗口速率（默认 1s N 次）。满了等当前渠道，超时 429，不因限流换渠、不占 `RetryTimes`。同优先级内先按 `ratio` 分桶（桶总 weight 抽价格），桶内有限流时选使用率最低的渠道。
+
+- 配置挂 `dto.ChannelSettings`：`rate_limit_count`（0=不限）、`rate_limit_duration_ms`（默认 1000）、`rate_limit_wait_ms`（nil=10s，0=等到客户端断开）
+- Redis ZSET 滑动窗口；无 Redis 时进程内窗口（多副本不共享）
+- 选路缓存路径在 `channelSyncLock` 外读 usage；DB 路径与缓存路径共用 `pickChannelByWeightAndLoad`
+- 等待挂在实际打上游前（Relay 重试循环 / Task 提交 / Midjourney 提交与换脸），渠道测试与内容审查不计
+- 超时 429 写入系统拒绝日志 `SystemLogTypeRateLimit`（reason=`channel_rate_limit_exceeded`），并带上渠道 ID / 模型名
+
+**涉及文件：** `common/chrate/`、`dto/channel_settings.go`、`model/channel.go`、`model/channel_cache.go`、`model/ability.go`、`model/channel_select.go`、`service/channel_rate_limit.go`、`controller/relay.go`、`relay/relay_task.go`、`relay/mjproxy_handler.go`、`constant/midjourney.go`、`types/error.go`、`i18n/keys.go`、`i18n/locales/*.yaml`、`web/default/src/features/channels/lib/channel-form.ts`、`web/default/src/features/channels/types.ts`、`web/default/src/features/channels/components/drawers/channel-mutate-drawer.tsx`、`web/default/src/i18n/locales/*.json`

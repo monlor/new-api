@@ -164,6 +164,11 @@ func DeleteHistoryLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	systemCount, systemErr := model.DeleteOldSystemLog(c.Request.Context(), targetTimestamp, 100)
+	if systemErr != nil {
+		common.ApiError(c, systemErr)
+		return
+	}
 	reviewCount, reviewErr := model.DeleteOldContentReviewLog(c.Request.Context(), targetTimestamp, 100, "all")
 	if reviewErr != nil {
 		common.ApiError(c, reviewErr)
@@ -172,7 +177,7 @@ func DeleteHistoryLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    count + reviewCount,
+		"data":    count + systemCount + reviewCount,
 	})
 	return
 }

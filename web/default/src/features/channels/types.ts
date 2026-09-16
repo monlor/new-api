@@ -88,6 +88,9 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  rate_limit_count?: number
+  rate_limit_duration_ms?: number
+  rate_limit_wait_ms?: number
 }
 
 export interface ChannelOtherSettings {

@@ -35,9 +35,8 @@ types/         — Type definitions (relay formats, file sources, errors)
 i18n/          — Backend internationalization (go-i18n, en/zh)
 oauth/         — OAuth provider implementations
 pkg/           — Internal packages (cachex, ionet)
-web/             — Frontend themes container
- web/default/   — Default frontend (React 19, Rsbuild, Base UI, Tailwind)
-  web/classic/   — Classic frontend (React 18, Vite, Semi Design)
+web/             — Frontend (React 19, Rsbuild, Base UI, Tailwind)
+  web/default/   — Default frontend
   web/default/src/i18n/ — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
 ```
 
@@ -95,6 +94,8 @@ All database code MUST be fully compatible with all three databases simultaneous
 - For SQLite, use `ALTER TABLE ... ADD COLUMN` instead of `ALTER COLUMN` (see `model/main.go` for patterns).
 
 ### Rule 3: Frontend — Prefer Bun
+
+The frontend is `web/default` only. Classic has been removed.
 
 Use `bun` as the preferred package manager and script runner for the frontend (`web/default/` directory):
 - `bun install` for dependency installation

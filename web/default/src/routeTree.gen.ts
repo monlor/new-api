@@ -40,6 +40,7 @@ import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenti
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authenticated/usage-logs/index'
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
+import { Route as AuthenticatedSystemLogsIndexRouteImport } from './routes/_authenticated/system-logs/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSubscriptionPlansIndexRouteImport } from './routes/_authenticated/subscription-plans/index'
 import { Route as AuthenticatedStatisticsIndexRouteImport } from './routes/_authenticated/statistics/index'
@@ -227,6 +228,12 @@ const AuthenticatedSystemSettingsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
+const AuthenticatedSystemLogsIndexRoute =
+  AuthenticatedSystemLogsIndexRouteImport.update({
+    id: '/system-logs/',
+    path: '/system-logs/',
+    getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSubscriptionsIndexRoute =
   AuthenticatedSubscriptionsIndexRouteImport.update({
@@ -447,6 +454,7 @@ export interface FileRoutesByFullPath {
   '/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/subscription-plans/': typeof AuthenticatedSubscriptionPlansIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/system-logs/': typeof AuthenticatedSystemLogsIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/users/': typeof AuthenticatedUsersIndexRoute
@@ -507,6 +515,7 @@ export interface FileRoutesByTo {
   '/statistics': typeof AuthenticatedStatisticsIndexRoute
   '/subscription-plans': typeof AuthenticatedSubscriptionPlansIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
+  '/system-logs': typeof AuthenticatedSystemLogsIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
   '/usage-logs': typeof AuthenticatedUsageLogsIndexRoute
   '/users': typeof AuthenticatedUsersIndexRoute
@@ -571,6 +580,7 @@ export interface FileRoutesById {
   '/_authenticated/statistics/': typeof AuthenticatedStatisticsIndexRoute
   '/_authenticated/subscription-plans/': typeof AuthenticatedSubscriptionPlansIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
+  '/_authenticated/system-logs/': typeof AuthenticatedSystemLogsIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
   '/_authenticated/usage-logs/': typeof AuthenticatedUsageLogsIndexRoute
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
@@ -634,6 +644,7 @@ export interface FileRouteTypes {
     | '/statistics/'
     | '/subscription-plans/'
     | '/subscriptions/'
+    | '/system-logs/'
     | '/system-settings/'
     | '/usage-logs/'
     | '/users/'
@@ -694,6 +705,7 @@ export interface FileRouteTypes {
     | '/statistics'
     | '/subscription-plans'
     | '/subscriptions'
+    | '/system-logs'
     | '/system-settings'
     | '/usage-logs'
     | '/users'
@@ -757,6 +769,7 @@ export interface FileRouteTypes {
     | '/_authenticated/statistics/'
     | '/_authenticated/subscription-plans/'
     | '/_authenticated/subscriptions/'
+    | '/_authenticated/system-logs/'
     | '/_authenticated/system-settings/'
     | '/_authenticated/usage-logs/'
     | '/_authenticated/users/'
@@ -1017,6 +1030,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/system-settings/'
       preLoaderRoute: typeof AuthenticatedSystemSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
+    '/_authenticated/system-logs/': {
+      id: '/_authenticated/system-logs/'
+      path: '/system-logs'
+      fullPath: '/system-logs/'
+      preLoaderRoute: typeof AuthenticatedSystemLogsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/subscriptions/': {
       id: '/_authenticated/subscriptions/'
@@ -1332,6 +1352,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedStatisticsIndexRoute: typeof AuthenticatedStatisticsIndexRoute
   AuthenticatedSubscriptionPlansIndexRoute: typeof AuthenticatedSubscriptionPlansIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
+  AuthenticatedSystemLogsIndexRoute: typeof AuthenticatedSystemLogsIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
@@ -1358,6 +1379,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSubscriptionPlansIndexRoute:
     AuthenticatedSubscriptionPlansIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,
+  AuthenticatedSystemLogsIndexRoute: AuthenticatedSystemLogsIndexRoute,
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,

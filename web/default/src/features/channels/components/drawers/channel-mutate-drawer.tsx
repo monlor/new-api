@@ -212,6 +212,11 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.weight ||
     values.proxy?.trim() ||
     values.system_prompt?.trim() ||
+    values.rate_limit_count ||
+    (values.rate_limit_duration_ms !== undefined &&
+      values.rate_limit_duration_ms !== 1000) ||
+    (values.rate_limit_wait_ms !== undefined &&
+      values.rate_limit_wait_ms !== 10000) ||
     values.force_format ||
     values.thinking_to_content ||
     values.pass_through_body_enabled ||
@@ -2553,6 +2558,94 @@ export function ChannelMutateDrawer({
                                 </FormControl>
                                 <FormDescription>
                                   {t(FIELD_DESCRIPTIONS.WEIGHT)}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <SubHeading
+                          title={t('Channel Rate Limit')}
+                          icon={<SlidersHorizontal className='h-3.5 w-3.5' />}
+                        />
+                        <div className='grid gap-4 sm:grid-cols-3'>
+                          <FormField
+                            control={form.control}
+                            name='rate_limit_count'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t('Requests per window')}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    min={0}
+                                    step={1}
+                                    placeholder='0'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t('0 = unlimited')}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name='rate_limit_duration_ms'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t('Window (ms)')}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    min={0}
+                                    step={1}
+                                    placeholder='1000'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t('Default 1000ms')}
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name='rate_limit_wait_ms'
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>{t('Wait timeout (ms)')}</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type='number'
+                                    min={0}
+                                    step={1}
+                                    placeholder='10000'
+                                    {...field}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        parseInt(e.target.value, 10) || 0
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  {t('0 = wait until client disconnects')}
                                 </FormDescription>
                                 <FormMessage />
                               </FormItem>

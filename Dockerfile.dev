@@ -16,9 +16,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Placeholder dist dirs so the embed directive compiles without real frontend files.
-RUN mkdir -p web/default/dist web/classic/dist && \
-    echo '<!doctype html><html><head><title>dev</title></head><body>backend hot-reload active</body></html>' > web/default/dist/index.html && \
-    echo '<!doctype html><html><head><title>dev</title></head><body>backend hot-reload active</body></html>' > web/classic/dist/index.html
+RUN mkdir -p web/default/dist && \
+    echo '<!doctype html><html><head><title>dev</title></head><body>backend hot-reload active</body></html>' > web/default/dist/index.html
 
 EXPOSE 3000
 ENTRYPOINT ["air", "-c", ".air.toml"]

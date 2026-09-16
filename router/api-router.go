@@ -316,6 +316,7 @@ func SetApiRouter(router *gin.Engine) {
 		logRoute.GET("/content_review", middleware.AdminAuth(), controller.GetContentReviewLogs)
 		logRoute.GET("/content_review/stat", middleware.AdminAuth(), controller.GetContentReviewLogsStat)
 		logRoute.DELETE("/content_review", middleware.AdminAuth(), controller.DeleteContentReviewLogs)
+		logRoute.GET("/system", middleware.AdminAuth(), controller.GetSystemLogs)
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)

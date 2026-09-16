@@ -224,7 +224,7 @@ export function LogSettingsSection({
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Automatically delete usage logs and content review logs older than this many days. 0 keeps them forever.'
+                    'Automatically delete usage logs, system logs, and content review logs older than this many days. 0 keeps them forever.'
                   )}
                 </FormDescription>
                 <FormMessage />
@@ -237,7 +237,7 @@ export function LogSettingsSection({
               <h4 className='text-sm font-medium'>{t('Clean history logs')}</h4>
               <p className='text-muted-foreground text-sm'>
                 {t(
-                  'Remove usage logs and content review logs created before the selected timestamp.'
+                  'Remove usage logs, system logs, and content review logs created before the selected timestamp.'
                 )}
               </p>
             </div>

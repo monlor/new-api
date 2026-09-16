@@ -1,7 +1,6 @@
 package system_setting
 
 import (
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
 )
 
@@ -16,7 +15,7 @@ type ThemeSettings struct {
 }
 
 var themeSettings = ThemeSettings{
-	Frontend:             "classic",
+	Frontend:             "default",
 	DefaultColorScheme:   "system",
 	DefaultPreset:        "default",
 	DefaultFont:          "default",
@@ -31,7 +30,7 @@ func init() {
 }
 
 func syncThemeToCommon() {
-	common.SetTheme(themeSettings.Frontend)
+	themeSettings.Frontend = "default"
 }
 
 func GetThemeSettings() *ThemeSettings {

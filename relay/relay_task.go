@@ -242,6 +242,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
+	if info.ChannelMeta != nil {
+		if apiErr := service.WaitChannelRateLimitSetting(c, info.ChannelId, info.ChannelSetting); apiErr != nil {
+			taskErr := service.TaskErrorFromAPIError(apiErr)
+			taskErr.LocalError = true
+			return nil, taskErr
+		}
+	}
+
 	// 8. 构建请求体
 	requestBody, err := adaptor.BuildRequestBody(c, info)
 	if err != nil {

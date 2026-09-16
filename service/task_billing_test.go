@@ -41,6 +41,7 @@ func TestMain(m *testing.M) {
 		&model.User{},
 		&model.Token{},
 		&model.Log{},
+		&model.SystemLog{},
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
@@ -64,6 +65,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM users")
 		model.DB.Exec("DELETE FROM tokens")
 		model.DB.Exec("DELETE FROM logs")
+		model.DB.Exec("DELETE FROM system_logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
@@ -183,10 +185,27 @@ func getLastLog(t *testing.T) *model.Log {
 	return &log
 }
 
+func getLastSystemLog(t *testing.T) *model.SystemLog {
+	t.Helper()
+	var log model.SystemLog
+	err := model.LOG_DB.Order("id desc").First(&log).Error
+	if err != nil {
+		return nil
+	}
+	return &log
+}
+
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
+	return count
+}
+
+func countSystemLogs(t *testing.T) int64 {
+	t.Helper()
+	var count int64
+	model.LOG_DB.Model(&model.SystemLog{}).Count(&count)
 	return count
 }
 
@@ -218,9 +237,9 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, -preConsumed, getTokenUsedQuota(t, tokenID))
 
 	// A refund log should be created
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed, log.Quota)
 	assert.Equal(t, "test-model", log.ModelName)
 }
@@ -249,9 +268,9 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	// Token should also be refunded
 	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
 
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
@@ -269,7 +288,7 @@ func TestRefundTaskQuota_ZeroQuota(t *testing.T) {
 	assert.Equal(t, 5000, getUserQuota(t, userID))
 
 	// No log created
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestRefundTaskQuota_NoToken(t *testing.T) {
@@ -290,9 +309,9 @@ func TestRefundTaskQuota_NoToken(t *testing.T) {
 	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
 
 	// Log created
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 }
 
 // ===========================================================================
@@ -359,9 +378,9 @@ func TestRecalculate_NegativeDelta(t *testing.T) {
 	assert.Equal(t, actualQuota, task.Quota)
 
 	// Log type should be Refund
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed-actualQuota, log.Quota)
 }
 
@@ -382,7 +401,7 @@ func TestRecalculate_ZeroDelta(t *testing.T) {
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 
 	// No log created (delta is zero)
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestRecalculate_ActualQuotaZero(t *testing.T) {
@@ -400,7 +419,7 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 
 	// No change (early return)
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
@@ -430,9 +449,9 @@ func TestRecalculate_Subscription_NegativeDelta(t *testing.T) {
 
 	assert.Equal(t, actualQuota, task.Quota)
 
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 }
 
 // ===========================================================================
@@ -516,9 +535,9 @@ func TestCASGuardedRefund_Win(t *testing.T) {
 	assert.Equal(t, initQuota+preConsumed, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
 
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 }
 
 func TestCASGuardedRefund_Lose(t *testing.T) {
@@ -550,7 +569,7 @@ func TestCASGuardedRefund_Lose(t *testing.T) {
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 
 	// No billing log should be created
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestCASGuardedSettle_Win(t *testing.T) {
@@ -607,7 +626,7 @@ func TestNonTerminalUpdate_NoBilling(t *testing.T) {
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 
 	// No billing log
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 
 	// Task progress should be updated in DB
 	var reloaded model.Task
@@ -660,7 +679,7 @@ func TestSettle_PerCallBilling_SkipsAdaptorAdjust(t *testing.T) {
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
@@ -687,7 +706,7 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, initQuota, getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
-	assert.Equal(t, int64(0), countLogs(t))
+	assert.Equal(t, int64(0), countLogs(t)+countSystemLogs(t))
 }
 
 func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
@@ -716,7 +735,7 @@ func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
 	assert.Equal(t, tokenRemain+(preConsumed-adaptorQuota), getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, adaptorQuota, task.Quota)
 
-	log := getLastLog(t)
+	log := getLastSystemLog(t)
 	require.NotNil(t, log)
-	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, model.SystemLogTypeRefund, log.Type)
 }

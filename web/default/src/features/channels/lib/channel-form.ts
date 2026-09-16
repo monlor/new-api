@@ -184,6 +184,9 @@ export const channelFormSchema = z
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
+    rate_limit_count: z.number().int().min(0).optional(),
+    rate_limit_duration_ms: z.number().int().min(0).optional(),
+    rate_limit_wait_ms: z.number().int().min(0).optional(),
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
@@ -306,6 +309,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   pass_through_body_enabled: false,
   system_prompt: '',
   system_prompt_override: false,
+  rate_limit_count: 0,
+  rate_limit_duration_ms: 1000,
+  rate_limit_wait_ms: 10000,
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
@@ -343,6 +349,9 @@ export function transformChannelToFormDefaults(
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
+    rate_limit_count: 0,
+    rate_limit_duration_ms: 1000,
+    rate_limit_wait_ms: 10000,
   }
 
   if (channel.setting) {
@@ -355,6 +364,19 @@ export function transformChannelToFormDefaults(
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
+        rate_limit_count:
+          typeof parsed.rate_limit_count === 'number'
+            ? parsed.rate_limit_count
+            : 0,
+        rate_limit_duration_ms:
+          typeof parsed.rate_limit_duration_ms === 'number' &&
+          parsed.rate_limit_duration_ms > 0
+            ? parsed.rate_limit_duration_ms
+            : 1000,
+        rate_limit_wait_ms:
+          typeof parsed.rate_limit_wait_ms === 'number'
+            ? parsed.rate_limit_wait_ms
+            : 10000,
       }
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -462,13 +484,24 @@ export function transformChannelToFormDefaults(
  * Build the setting JSON string from form extra settings
  */
 function buildSettingJSON(formData: ChannelFormValues): string {
-  const settingObj = {
+  const settingObj: Record<string, unknown> = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
     proxy: formData.proxy || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
+  }
+  if (formData.rate_limit_count && formData.rate_limit_count > 0) {
+    settingObj.rate_limit_count = formData.rate_limit_count
+    settingObj.rate_limit_duration_ms =
+      formData.rate_limit_duration_ms && formData.rate_limit_duration_ms > 0
+        ? formData.rate_limit_duration_ms
+        : 1000
+    settingObj.rate_limit_wait_ms =
+      formData.rate_limit_wait_ms === undefined
+        ? 10000
+        : formData.rate_limit_wait_ms
   }
   return JSON.stringify(settingObj)
 }

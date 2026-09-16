@@ -235,6 +235,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			break
 		}
 
+		if rateLimitErr := service.WaitChannelRateLimit(c, channel); rateLimitErr != nil {
+			newAPIError = rateLimitErr
+			break
+		}
+
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -527,7 +532,9 @@ func RelayMidjourney(c *gin.Context) {
 	log.Println(mjErr)
 	if mjErr != nil {
 		statusCode := http.StatusBadRequest
-		if mjErr.Code == 30 {
+		if mjErr.Code == constant.MjChannelRateLimited {
+			statusCode = http.StatusTooManyRequests
+		} else if mjErr.Code == 30 {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
 		}
@@ -701,9 +708,9 @@ func RelayTask(c *gin.Context) {
 	}
 }
 
-// respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
+// respondTaskError 统一输出 Task 错误响应（含上游 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
-	if taskErr.StatusCode == http.StatusTooManyRequests {
+	if taskErr.StatusCode == http.StatusTooManyRequests && !taskErr.LocalError {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
@@ -720,6 +727,9 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 		return false
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
+		return false
+	}
+	if taskErr.LocalError {
 		return false
 	}
 	if taskErr.StatusCode == http.StatusTooManyRequests {
@@ -740,9 +750,6 @@ func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError,
 	}
 	if taskErr.StatusCode == 408 {
 		// azure处理超时不重试
-		return false
-	}
-	if taskErr.LocalError {
 		return false
 	}
 	if taskErr.StatusCode/100 == 2 {

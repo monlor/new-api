@@ -360,11 +360,13 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			if errors.Is(err, model.ErrDatabase) {
 				common.SysLog("TokenAuth ValidateUserToken database error: " + err.Error())
-				abortWithOpenAiMessage(c, http.StatusInternalServerError,
-					common.TranslateMessage(c, i18n.MsgDatabaseError))
+				msg := common.TranslateMessage(c, i18n.MsgDatabaseError)
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, msg)
+				model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "token_db_error", msg, http.StatusInternalServerError)
 			} else {
-				abortWithOpenAiMessage(c, http.StatusUnauthorized,
-					common.TranslateMessage(c, i18n.MsgTokenInvalid))
+				msg := common.TranslateMessage(c, i18n.MsgTokenInvalid)
+				abortWithOpenAiMessage(c, http.StatusUnauthorized, msg)
+				model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "token_invalid", msg, http.StatusUnauthorized)
 			}
 			return
 		}
@@ -376,10 +378,12 @@ func TokenAuth() func(c *gin.Context) {
 			ip := net.ParseIP(clientIp)
 			if ip == nil {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "无法解析客户端 IP 地址")
+				model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "token_ip_unparseable", "无法解析客户端 IP 地址", http.StatusForbidden)
 				return
 			}
 			if common.IsIpInCIDRList(ip, allowIps) == false {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中", types.ErrorCodeAccessDenied)
+				model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "token_ip_restricted", "您的 IP 不在令牌允许访问的列表中", http.StatusForbidden)
 				return
 			}
 			logger.LogDebug(c, "Client IP %s passed the token IP restrictions check", clientIp)
@@ -388,13 +392,16 @@ func TokenAuth() func(c *gin.Context) {
 		userCache, err := model.GetUserCache(token.UserId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("TokenAuth GetUserCache error for user %d: %v", token.UserId, err))
-			abortWithOpenAiMessage(c, http.StatusInternalServerError,
-				common.TranslateMessage(c, i18n.MsgDatabaseError))
+			msg := common.TranslateMessage(c, i18n.MsgDatabaseError)
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, msg)
+			model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "user_cache_error", msg, http.StatusInternalServerError)
 			return
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
-			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
+			msg := common.TranslateMessage(c, i18n.MsgAuthUserBanned)
+			abortWithOpenAiMessage(c, http.StatusForbidden, msg)
+			model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "user_banned", msg, http.StatusForbidden)
 			return
 		}
 
@@ -405,13 +412,17 @@ func TokenAuth() func(c *gin.Context) {
 		if tokenGroup != "" {
 			// check common.UserUsableGroups[userGroup]
 			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
-				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
+				msg := fmt.Sprintf("无权访问 %s 分组", tokenGroup)
+				abortWithOpenAiMessage(c, http.StatusForbidden, msg)
+				model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "group_no_access", msg, http.StatusForbidden)
 				return
 			}
 			// check group in common.GroupRatio
 			if !ratio_setting.ContainsGroupRatio(tokenGroup) {
 				if tokenGroup != "auto" {
-					abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("分组 %s 已被弃用", tokenGroup))
+					msg := fmt.Sprintf("分组 %s 已被弃用", tokenGroup)
+					abortWithOpenAiMessage(c, http.StatusForbidden, msg)
+					model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "group_deprecated", msg, http.StatusForbidden)
 					return
 				}
 			}
@@ -454,6 +465,7 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 		} else {
 			c.Header("specific_channel_version", "701e3ae1dc3f7975556d354e0675168d004891c8")
 			abortWithOpenAiMessage(c, http.StatusForbidden, "普通用户不支持指定渠道")
+			model.RecordRejectionLog(c, model.SystemLogTypeTokenReject, "specific_channel_forbidden", "普通用户不支持指定渠道", http.StatusForbidden)
 			return fmt.Errorf("普通用户不支持指定渠道")
 		}
 	}

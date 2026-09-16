@@ -3,7 +3,6 @@ package model
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -114,7 +113,12 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 	}
 
 	channelSyncLock.RLock()
-	defer channelSyncLock.RUnlock()
+	heldLock := true
+	defer func() {
+		if heldLock {
+			channelSyncLock.RUnlock()
+		}
+	}()
 
 	// First, try to find channels with the exact model name.
 	channels := group2model2channels[group][model]
@@ -165,12 +169,10 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 	}
 	targetPriority := int64(sortedUniquePriorities[retry])
 
-	var sumWeight = 0
 	var targetChannels []*Channel
 	for _, channelId := range channels {
 		channel := channelsIDM[channelId]
 		if channel.GetPriority() == targetPriority {
-			sumWeight += channel.GetWeight()
 			targetChannels = append(targetChannels, channel)
 		}
 	}
@@ -184,48 +186,27 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, tokenBilli
 	// to balance-only channels if no subscription channels exist at this priority.
 	if tokenBillingType == ChannelBillingTypeAll {
 		var subChannels []*Channel
-		var subWeight int
 		for _, ch := range targetChannels {
 			if ch.BillingType != ChannelBillingTypeWalletOnly {
 				subChannels = append(subChannels, ch)
-				subWeight += ch.GetWeight()
 			}
 		}
 		if len(subChannels) > 0 {
 			targetChannels = subChannels
-			sumWeight = subWeight
 		}
 	}
 
-	// smoothing factor and adjustment
-	smoothingFactor := 1
-	smoothingAdjustment := 0
+	// Copy candidates so usage reads happen outside channelSyncLock.
+	candidates := make([]*Channel, len(targetChannels))
+	copy(candidates, targetChannels)
+	channelSyncLock.RUnlock()
+	heldLock = false
 
-	if sumWeight == 0 {
-		// when all channels have weight 0, set sumWeight to the number of channels and set smoothing adjustment to 100
-		// each channel's effective weight = 100
-		sumWeight = len(targetChannels) * 100
-		smoothingAdjustment = 100
-	} else if sumWeight/len(targetChannels) < 10 {
-		// when the average weight is less than 10, set smoothing factor to 100
-		smoothingFactor = 100
+	picked := pickChannelByWeightAndLoad(candidates)
+	if picked == nil {
+		return nil, errors.New("channel not found")
 	}
-
-	// Calculate the total weight of all channels up to endIdx
-	totalWeight := sumWeight * smoothingFactor
-
-	// Generate a random value in the range [0, totalWeight)
-	randomWeight := rand.Intn(totalWeight)
-
-	// Find a channel based on its weight
-	for _, channel := range targetChannels {
-		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
-		if randomWeight < 0 {
-			return channel, nil
-		}
-	}
-	// return null if no channel is not found
-	return nil, errors.New("channel not found")
+	return picked, nil
 }
 
 func CacheGetChannel(id int) (*Channel, error) {

@@ -106,7 +106,7 @@ func setupContentReviewLogTestDB(t *testing.T) {
 		common.UsingSQLite, common.UsingMySQL, common.UsingPostgreSQL, common.RedisEnabled = oldSQLite, oldMySQL, oldPG, oldRedis
 		constant.ErrorLogEnabled = oldErrorLogEnabled
 	})
-	if err := db.AutoMigrate(&model.User{}, &model.Log{}, &model.ContentReviewLog{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.Log{}, &model.SystemLog{}, &model.ContentReviewLog{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 }
@@ -464,6 +464,9 @@ func TestDeleteHistoryLogsAlsoClearsContentReviewLogs(t *testing.T) {
 	if err := model.LOG_DB.Create(&model.Log{CreatedAt: now - 100, Type: model.LogTypeConsume, Content: "old"}).Error; err != nil {
 		t.Fatalf("create log: %v", err)
 	}
+	if err := model.LOG_DB.Create(&model.SystemLog{CreatedAt: now - 100, Type: model.SystemLogTypeSystem, Content: "old-system"}).Error; err != nil {
+		t.Fatalf("create system log: %v", err)
+	}
 	if err := model.LOG_DB.Create(&model.ContentReviewLog{CreatedAt: now - 100, Decision: model.ContentReviewDecisionPass}).Error; err != nil {
 		t.Fatalf("create review log: %v", err)
 	}
@@ -478,15 +481,18 @@ func TestDeleteHistoryLogsAlsoClearsContentReviewLogs(t *testing.T) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
-	var logCount, reviewCount int64
+	var logCount, systemCount, reviewCount int64
 	if err := model.LOG_DB.Model(&model.Log{}).Count(&logCount).Error; err != nil {
 		t.Fatalf("log count: %v", err)
+	}
+	if err := model.LOG_DB.Model(&model.SystemLog{}).Count(&systemCount).Error; err != nil {
+		t.Fatalf("system log count: %v", err)
 	}
 	if err := model.LOG_DB.Model(&model.ContentReviewLog{}).Count(&reviewCount).Error; err != nil {
 		t.Fatalf("review count: %v", err)
 	}
-	if logCount != 0 || reviewCount != 0 {
-		t.Fatalf("logCount=%d reviewCount=%d", logCount, reviewCount)
+	if logCount != 0 || systemCount != 0 || reviewCount != 0 {
+		t.Fatalf("logCount=%d systemCount=%d reviewCount=%d", logCount, systemCount, reviewCount)
 	}
 }
 
@@ -498,14 +504,17 @@ func TestCleanupExpiredLogsDeletesUsageAndReviewTogether(t *testing.T) {
 	recent := now.Unix()
 	records := []struct {
 		log    model.Log
+		system model.SystemLog
 		review model.ContentReviewLog
 	}{
 		{
 			log:    model.Log{CreatedAt: old, Type: model.LogTypeConsume, Content: "old-usage"},
+			system: model.SystemLog{CreatedAt: old, Type: model.SystemLogTypeSystem, Content: "old-system"},
 			review: model.ContentReviewLog{CreatedAt: old, Decision: model.ContentReviewDecisionPass, RequestId: "old-review"},
 		},
 		{
 			log:    model.Log{CreatedAt: recent, Type: model.LogTypeConsume, Content: "new-usage"},
+			system: model.SystemLog{CreatedAt: recent, Type: model.SystemLogTypeLogin, Content: "new-system"},
 			review: model.ContentReviewLog{CreatedAt: recent, Decision: model.ContentReviewDecisionBlock, RequestId: "new-review"},
 		},
 	}
@@ -513,25 +522,28 @@ func TestCleanupExpiredLogsDeletesUsageAndReviewTogether(t *testing.T) {
 		if err := model.LOG_DB.Create(&record.log).Error; err != nil {
 			t.Fatalf("create log: %v", err)
 		}
+		if err := model.LOG_DB.Create(&record.system).Error; err != nil {
+			t.Fatalf("create system log: %v", err)
+		}
 		if err := model.LOG_DB.Create(&record.review).Error; err != nil {
 			t.Fatalf("create review log: %v", err)
 		}
 	}
 
-	logCount, reviewCount, err := model.CleanupExpiredLogs(t.Context(), 0)
+	logCount, systemCount, reviewCount, err := model.CleanupExpiredLogs(t.Context(), 0)
 	if err != nil {
 		t.Fatalf("retention 0: %v", err)
 	}
-	if logCount != 0 || reviewCount != 0 {
-		t.Fatalf("retention 0 deleted logCount=%d reviewCount=%d", logCount, reviewCount)
+	if logCount != 0 || systemCount != 0 || reviewCount != 0 {
+		t.Fatalf("retention 0 deleted logCount=%d systemCount=%d reviewCount=%d", logCount, systemCount, reviewCount)
 	}
 
-	logCount, reviewCount, err = model.CleanupExpiredLogs(t.Context(), 1)
+	logCount, systemCount, reviewCount, err = model.CleanupExpiredLogs(t.Context(), 1)
 	if err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
-	if logCount != 1 || reviewCount != 1 {
-		t.Fatalf("logCount=%d reviewCount=%d want 1,1", logCount, reviewCount)
+	if logCount != 1 || systemCount != 1 || reviewCount != 1 {
+		t.Fatalf("logCount=%d systemCount=%d reviewCount=%d want 1,1,1", logCount, systemCount, reviewCount)
 	}
 
 	var remainingLogs []model.Log
@@ -540,6 +552,13 @@ func TestCleanupExpiredLogsDeletesUsageAndReviewTogether(t *testing.T) {
 	}
 	if len(remainingLogs) != 1 || remainingLogs[0].Content != "new-usage" {
 		t.Fatalf("remaining logs=%+v", remainingLogs)
+	}
+	var remainingSystemLogs []model.SystemLog
+	if err := model.LOG_DB.Find(&remainingSystemLogs).Error; err != nil {
+		t.Fatalf("find system logs: %v", err)
+	}
+	if len(remainingSystemLogs) != 1 || remainingSystemLogs[0].Content != "new-system" {
+		t.Fatalf("remaining system logs=%+v", remainingSystemLogs)
 	}
 	var remainingReviews []model.ContentReviewLog
 	if err := model.LOG_DB.Find(&remainingReviews).Error; err != nil {

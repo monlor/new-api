@@ -107,15 +107,21 @@ export const LOG_TYPES = [
  * Log types for DataTableToolbar filters (single select mode)
  * Backend treats type=0 as "all logs" in list/stat endpoints, so the filter
  * must not expose the display-only "Unknown" label for that value.
+ *
+ * The usage logs backend (logs table) now only ever returns Consume(=2) or
+ * Error(=5) records (Topup/Manage/System/Refund/Login moved to the
+ * independent system_logs table), so the filter list is trimmed to match.
  */
+const USAGE_LOG_FILTERABLE_TYPES = [LOG_TYPE_ENUM.CONSUME, LOG_TYPE_ENUM.ERROR]
+
 export const LOG_TYPE_FILTERS = [
   { label: 'All Types', value: LOG_TYPE_ALL_VALUE },
-  ...LOG_TYPES.filter((type) => type.value !== LOG_TYPE_ENUM.UNKNOWN).map(
-    (type) => ({
-      label: type.label,
-      value: String(type.value),
-    })
-  ),
+  ...LOG_TYPES.filter((type) =>
+    (USAGE_LOG_FILTERABLE_TYPES as readonly number[]).includes(type.value)
+  ).map((type) => ({
+    label: type.label,
+    value: String(type.value),
+  })),
 ] as const
 
 // ============================================================================

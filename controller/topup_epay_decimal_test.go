@@ -68,7 +68,7 @@ func setupEpayDecimalTest(t *testing.T) (*gorm.DB, int) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &legacyEpayTopUp{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.SystemLog{}, &legacyEpayTopUp{}))
 	user := model.User{Username: "epay-decimal-test", Group: "default"}
 	require.NoError(t, db.Create(&user).Error)
 	return db, user.Id
