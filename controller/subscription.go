@@ -167,6 +167,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "展示模型列表格式错误")
 		return
 	}
+	if !model.DisplayModelsWellFormed(req.Plan.AllowedModels) {
+		common.ApiErrorMsg(c, "可用模型列表格式错误")
+		return
+	}
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
@@ -238,6 +242,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "展示模型列表格式错误")
 		return
 	}
+	if !model.DisplayModelsWellFormed(req.Plan.AllowedModels) {
+		common.ApiErrorMsg(c, "可用模型列表格式错误")
+		return
+	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
@@ -253,6 +261,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"sort_order":                 req.Plan.SortOrder,
 			"is_recommended":             req.Plan.IsRecommended,
 			"display_models":             req.Plan.DisplayModels,
+			"allowed_models":             strings.TrimSpace(req.Plan.AllowedModels),
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
@@ -349,9 +358,18 @@ func AdminListUserSubscriptions(c *gin.Context) {
 
 type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
+
+	// The fields below apply only when plan_id <= 0 (custom assignment with no plan behind it).
+	DurationUnit  string `json:"duration_unit,omitempty"`
+	DurationValue int    `json:"duration_value,omitempty"`
+	CustomSeconds int64  `json:"custom_seconds,omitempty"`
+	AllowedModels string `json:"allowed_models,omitempty"`
+	TotalAmount   int64  `json:"total_amount,omitempty"`
+	CustomName    string `json:"custom_name,omitempty"`
 }
 
-// AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
+// AdminCreateUserSubscription creates a new user subscription (no payment), either
+// from an existing plan (plan_id > 0) or as a standalone custom assignment.
 func AdminCreateUserSubscription(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
@@ -363,10 +381,44 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		return
 	}
 	var req AdminCreateUserSubscriptionRequest
-	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
+
+	if req.PlanId <= 0 {
+		if req.DurationUnit == "" {
+			req.DurationUnit = model.SubscriptionDurationMonth
+		}
+		if req.DurationValue <= 0 && req.DurationUnit != model.SubscriptionDurationCustom {
+			req.DurationValue = 1
+		}
+		if req.DurationUnit == model.SubscriptionDurationCustom && req.CustomSeconds <= 0 {
+			common.ApiErrorMsg(c, "自定义有效期需大于0秒")
+			return
+		}
+		if req.TotalAmount < 0 {
+			common.ApiErrorMsg(c, "额度不能为负数")
+			return
+		}
+		if !model.DisplayModelsWellFormed(req.AllowedModels) {
+			common.ApiErrorMsg(c, "可用模型列表格式错误")
+			return
+		}
+		customName := strings.TrimSpace(req.CustomName)
+		if len([]rune(customName)) > 128 {
+			common.ApiErrorMsg(c, "订阅名称过长")
+			return
+		}
+		if _, err := model.AdminAssignCustomSubscription(userId, req.DurationUnit, req.DurationValue,
+			req.CustomSeconds, req.AllowedModels, req.TotalAmount, customName); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, nil)
+		return
+	}
+
 	msg, err := model.AdminBindSubscription(userId, req.PlanId, "")
 	if err != nil {
 		common.ApiError(c, err)
@@ -461,10 +513,12 @@ func AdminDeleteUserSubscription(c *gin.Context) {
 }
 
 type AdminUpdateUserSubscriptionRequest struct {
-	AmountUsed  *int64  `json:"amount_used,omitempty"`
-	AmountTotal *int64  `json:"amount_total,omitempty"`
-	EndTime     *int64  `json:"end_time,omitempty"`
-	Status      *string `json:"status,omitempty"`
+	AmountUsed    *int64  `json:"amount_used,omitempty"`
+	AmountTotal   *int64  `json:"amount_total,omitempty"`
+	EndTime       *int64  `json:"end_time,omitempty"`
+	Status        *string `json:"status,omitempty"`
+	AllowedModels *string `json:"allowed_models,omitempty"`
+	CustomName    *string `json:"custom_name,omitempty"`
 }
 
 // AdminUpdateUserSubscription edits editable fields of a user subscription.
@@ -479,7 +533,7 @@ func AdminUpdateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if req.AmountUsed == nil && req.AmountTotal == nil && req.EndTime == nil && req.Status == nil {
+	if req.AmountUsed == nil && req.AmountTotal == nil && req.EndTime == nil && req.Status == nil && req.AllowedModels == nil && req.CustomName == nil {
 		common.ApiErrorMsg(c, "没有需要更新的字段")
 		return
 	}
@@ -499,8 +553,17 @@ func AdminUpdateUserSubscription(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
+	if req.AllowedModels != nil && !model.DisplayModelsWellFormed(*req.AllowedModels) {
+		common.ApiErrorMsg(c, "可用模型列表格式错误")
+		return
+	}
 
-	sub, err := model.AdminUpdateUserSubscription(subId, req.AmountUsed, req.AmountTotal, req.EndTime, req.Status)
+	if req.CustomName != nil && len([]rune(strings.TrimSpace(*req.CustomName))) > 128 {
+		common.ApiErrorMsg(c, "订阅名称过长")
+		return
+	}
+
+	sub, err := model.AdminUpdateUserSubscription(subId, req.AmountUsed, req.AmountTotal, req.EndTime, req.Status, req.AllowedModels, req.CustomName)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -511,6 +574,8 @@ func AdminUpdateUserSubscription(c *gin.Context) {
 		"amount_total":    req.AmountTotal,
 		"end_time":        req.EndTime,
 		"status":          req.Status,
+		"allowed_models":  req.AllowedModels,
+		"custom_name":     req.CustomName,
 	})
 	common.ApiSuccess(c, sub)
 }

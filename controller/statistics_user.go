@@ -266,8 +266,26 @@ func GetUserStatistics(c *gin.Context) {
 	})
 }
 
-// GetUserTokenStatistics GET /api/statistics/users/tokens
-func GetUserTokenStatistics(c *gin.Context) {
+// userUsageDetailSummary 单个用户在周期内的汇总，由模型维度的行求和得出，
+// 与列表页同一数据源（LOG_DB.logs，type=consume）。
+type userUsageDetailSummary struct {
+	Count            int64    `json:"count"`
+	Quota            int64    `json:"quota"`
+	TokenUsed        int64    `json:"token_used"`
+	OriginalValueUsd *float64 `json:"original_value_usd,omitempty"`
+}
+
+// userModelUsageItem 弹框里「按模型」表格的一行。
+type userModelUsageItem struct {
+	model.UserModelUsageStat
+	// Percentage 该模型消耗占该用户周期内总消耗的百分比。
+	Percentage float64 `json:"percentage"`
+}
+
+// GetUserUsageDetail GET /api/statistics/users/detail
+//
+// 一次返回用户详情弹框需要的全部数据：周期汇总 + 按 API 密钥 + 按模型。
+func GetUserUsageDetail(c *gin.Context) {
 	userId, err := strconv.Atoi(c.Query("user_id"))
 	if err != nil || userId <= 0 {
 		common.ApiErrorMsg(c, "无效的用户 ID")
@@ -275,32 +293,70 @@ func GetUserTokenStatistics(c *gin.Context) {
 	}
 	startTimestamp, endTimestamp := parseStatisticsTimeRange(c)
 
-	items, err := model.GetUserTokenUsageStat(userId, startTimestamp, endTimestamp)
+	tokenItems, err := model.GetUserTokenUsageStat(userId, startTimestamp, endTimestamp)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	// 原始价值：按密钥 + 模型拆分后换算；查询失败或该密钥无一成功换算则省略字段
-	if modelRows, modelErr := model.GetUserTokenModelQuota(userId, startTimestamp, endTimestamp); modelErr == nil {
-		pricingByModel, groupRatios := buildPricingIndex()
+	modelRows, err := model.GetUserModelUsageStat(userId, startTimestamp, endTimestamp)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pricingByModel, groupRatios := buildPricingIndex()
+
+	// 密钥维度的原始价值：按密钥 × 模型拆分后换算；查询失败或该密钥无一成功换算则省略字段
+	if tokenModelRows, modelErr := model.GetUserTokenModelQuota(userId, startTimestamp, endTimestamp); modelErr == nil {
 		originalValues := make(map[int]float64)
 		originalValueConverted := make(map[int]bool)
-		for _, row := range modelRows {
+		for _, row := range tokenModelRows {
 			sum := originalValues[row.TokenId]
 			converted := originalValueConverted[row.TokenId]
 			addOriginalValueUSD(&sum, &converted, row.ModelName, row.Quota, pricingByModel, groupRatios)
 			originalValues[row.TokenId] = sum
 			originalValueConverted[row.TokenId] = converted
 		}
-		for i := range items {
-			if originalValueConverted[items[i].TokenId] {
-				items[i].OriginalValueUsd = originalValueUSDPtr(originalValues[items[i].TokenId], true)
+		for i := range tokenItems {
+			if originalValueConverted[tokenItems[i].TokenId] {
+				tokenItems[i].OriginalValueUsd = originalValueUSDPtr(originalValues[tokenItems[i].TokenId], true)
 			}
 		}
 	}
 
+	// 模型维度 + 汇总：同一轮遍历累加，汇总的原始价值遵循与单行一致的 converted 语义
+	summary := userUsageDetailSummary{}
+	var summaryOriginalValue float64
+	summaryConverted := false
+	for i := range modelRows {
+		summary.Count += modelRows[i].RequestCount
+		summary.Quota += modelRows[i].Quota
+		summary.TokenUsed += modelRows[i].TokenUsed
+
+		var rowValue float64
+		rowConverted := false
+		addOriginalValueUSD(&rowValue, &rowConverted, modelRows[i].ModelName, modelRows[i].Quota, pricingByModel, groupRatios)
+		modelRows[i].OriginalValueUsd = originalValueUSDPtr(rowValue, rowConverted)
+		if rowConverted {
+			summaryOriginalValue += rowValue
+			summaryConverted = true
+		}
+	}
+	summary.OriginalValueUsd = originalValueUSDPtr(summaryOriginalValue, summaryConverted)
+
+	modelItems := make([]userModelUsageItem, 0, len(modelRows))
+	for _, row := range modelRows {
+		item := userModelUsageItem{UserModelUsageStat: row}
+		if summary.Quota > 0 {
+			item.Percentage = float64(row.Quota) / float64(summary.Quota) * 100
+		}
+		modelItems = append(modelItems, item)
+	}
+
 	common.ApiSuccess(c, gin.H{
-		"items": items,
+		"summary": summary,
+		"tokens":  tokenItems,
+		"models":  modelItems,
 	})
 }

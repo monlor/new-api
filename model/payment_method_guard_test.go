@@ -172,3 +172,23 @@ func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) 
 	require.NotNil(t, order)
 	assert.Equal(t, common.TopUpStatusPending, order.Status)
 }
+
+// 订阅订单镜像到 top_ups 时必须带上 payment_provider，否则收入统计无法识别网关：
+// Epay 的 CNY 金额不会折回系统 USD，支付方式占比也只会显示「未知」。
+func TestCompleteSubscriptionOrder_MirrorsPaymentProvider(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 404, 0)
+	plan := insertSubscriptionPlanForPaymentGuardTest(t, 501)
+	insertSubscriptionOrderForPaymentGuardTest(t, "sub-mirror-order", 404, plan.Id, PaymentProviderEpay)
+
+	require.NoError(t, CompleteSubscriptionOrder("sub-mirror-order", `{"provider":"epay"}`, PaymentProviderEpay, "alipay"))
+
+	topUp := GetTopUpByTradeNo("sub-mirror-order")
+	require.NotNil(t, topUp)
+	assert.Equal(t, PaymentProviderEpay, topUp.PaymentProvider)
+	// 镜像发生在 order.PaymentMethod 被回调实际支付方式覆盖之前，
+	// 因此这里是下单时的支付方式（既有行为，本次未改动）。
+	assert.Equal(t, PaymentProviderEpay, topUp.PaymentMethod)
+	assert.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+}

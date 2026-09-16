@@ -48,7 +48,7 @@ func TestAdminUpdateUserSubscription_CancelledSaveKeepsEndTime(t *testing.T) {
 
 	used := int64(20)
 	status := SubscriptionStatusCancelled
-	updated, err := AdminUpdateUserSubscription(sub.Id, &used, nil, nil, &status)
+	updated, err := AdminUpdateUserSubscription(sub.Id, &used, nil, nil, &status, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, historicalEnd, updated.EndTime)
 	require.Equal(t, SubscriptionStatusCancelled, updated.Status)
@@ -65,7 +65,7 @@ func TestAdminUpdateUserSubscription_TransitionToCancelledStampsEndTime(t *testi
 
 	before := common.GetTimestamp()
 	status := SubscriptionStatusCancelled
-	updated, err := AdminUpdateUserSubscription(sub.Id, nil, nil, nil, &status)
+	updated, err := AdminUpdateUserSubscription(sub.Id, nil, nil, nil, &status, nil, nil)
 	require.NoError(t, err)
 	after := common.GetTimestamp()
 
@@ -89,7 +89,7 @@ func TestAdminUpdateUserSubscription_ReactivateRestoresUpgradeGroup(t *testing.T
 
 			status := SubscriptionStatusActive
 			endTime := common.GetTimestamp() + 86400
-			updated, err := AdminUpdateUserSubscription(sub.Id, nil, nil, &endTime, &status)
+			updated, err := AdminUpdateUserSubscription(sub.Id, nil, nil, &endTime, &status, nil, nil)
 			require.NoError(t, err)
 			require.Equal(t, SubscriptionStatusActive, updated.Status)
 			require.Equal(t, endTime, updated.EndTime)

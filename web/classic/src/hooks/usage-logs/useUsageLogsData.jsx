@@ -497,6 +497,12 @@ export const useLogsData = () => {
             value: other.reasoning_effort,
           });
         }
+        if (other?.thinking_budget != null) {
+          expandDataLocal.push({
+            key: t('Thinking Budget'),
+            value: other.thinking_budget,
+          });
+        }
         if (other?.billing_mode === 'tiered_expr' && other?.expr_b64) {
           expandDataLocal.push({
             key: t('计费过程'),

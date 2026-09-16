@@ -1,5 +1,4 @@
 {
-  "CC Switch": "CC Switch",
   "Delete selected users": "Delete selected users",
   "Delete {{count}} user(s)?": "Delete {{count}} user(s)?",
   "Disable selected users": "Disable selected users",
@@ -14,7 +13,6 @@
   "English is the default notice and is required.": "English is the default notice and is required.",
   "When this language is empty, users see the English announcement.": "When this language is empty, users see the English announcement.",
   "When this language is empty, users see the English notice.": "When this language is empty, users see the English notice.",
-  "Waffo Pancake": "Waffo Pancake",
   "You are about to delete {{count}} user(s). This action cannot be undone.": "You are about to delete {{count}} user(s). This action cannot be undone.",
   "Batch test completed: {{count}} succeeded": "Batch test completed: {{count}} succeeded",
   "Batch testing models...": "Batch testing models...",

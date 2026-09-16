@@ -231,6 +231,24 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	if info != nil && info.ReasoningEffort == "" {
+		modelName := request.Model
+		if info.UpstreamModelName != "" {
+			modelName = info.UpstreamModelName
+		} else if info.OriginModelName != "" {
+			modelName = info.OriginModelName
+		}
+		info.ReasoningEffort = reasoning.EffortFromOpenAIChat(modelName, request.ReasoningEffort, request.Reasoning)
+	}
+	if info != nil && info.ThinkingBudget == nil {
+		modelName := request.Model
+		if info.OriginModelName != "" {
+			modelName = info.OriginModelName
+		} else if info.UpstreamModelName != "" {
+			modelName = info.UpstreamModelName
+		}
+		info.ThinkingBudget = reasoning.ThinkingBudgetFromModelName(modelName)
+	}
 	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure {
 		request.StreamOptions = nil
 	}
@@ -338,7 +356,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.Model = originModel
 		}
 
-		info.ReasoningEffort = request.ReasoningEffort
+		if request.ReasoningEffort != "" {
+			info.ReasoningEffort = request.ReasoningEffort
+		}
 
 		// o系列模型developer适配（o1-mini除外）
 		if !strings.HasPrefix(info.UpstreamModelName, "o1-mini") && !strings.HasPrefix(info.UpstreamModelName, "o1-preview") {

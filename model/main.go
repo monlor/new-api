@@ -310,6 +310,72 @@ func migrateDB() error {
 			return err
 		}
 	}
+	// Runs after AutoMigrate so top_ups.payment_provider is guaranteed to exist.
+	if err := migrateTopUpPaymentProviderBackfill(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// topUpProviderBackfillChunk 限制单批 IN (...) 的参数量，兼顾三种数据库的绑定参数上限。
+const topUpProviderBackfillChunk = 500
+
+// migrateTopUpPaymentProviderBackfill 回填历史订阅镜像充值记录缺失的 payment_provider。
+// 早期 upsertSubscriptionTopUpTx 没有拷贝该字段，导致收入统计无法识别网关：
+// Epay 的 CNY 金额不会按 Price 折回系统 USD，支付方式占比也只能显示「未知」。
+// 幂等：只更新 payment_provider 为空的行；不使用 MySQL 专有的 UPDATE ... JOIN。
+func migrateTopUpPaymentProviderBackfill() error {
+	if !DB.Migrator().HasTable(&TopUp{}) || !DB.Migrator().HasTable(&SubscriptionOrder{}) {
+		return nil
+	}
+
+	var blankTradeNos []string
+	if err := DB.Model(&TopUp{}).
+		Where("payment_provider = ?", "").
+		Pluck("trade_no", &blankTradeNos).Error; err != nil {
+		return fmt.Errorf("failed to scan top_ups missing payment_provider: %w", err)
+	}
+	if len(blankTradeNos) == 0 {
+		return nil
+	}
+
+	var updated int64
+	for start := 0; start < len(blankTradeNos); start += topUpProviderBackfillChunk {
+		end := start + topUpProviderBackfillChunk
+		if end > len(blankTradeNos) {
+			end = len(blankTradeNos)
+		}
+		chunk := blankTradeNos[start:end]
+
+		var orders []SubscriptionOrder
+		if err := DB.Model(&SubscriptionOrder{}).
+			Select("trade_no", "payment_provider").
+			Where("payment_provider <> ?", "").
+			Where("trade_no IN ?", chunk).
+			Find(&orders).Error; err != nil {
+			return fmt.Errorf("failed to load subscription orders for provider backfill: %w", err)
+		}
+
+		// 按 provider 聚合，每个 provider 一条 UPDATE，避免逐行更新。
+		tradeNosByProvider := make(map[string][]string, len(orders))
+		for _, order := range orders {
+			tradeNosByProvider[order.PaymentProvider] = append(tradeNosByProvider[order.PaymentProvider], order.TradeNo)
+		}
+		for provider, tradeNos := range tradeNosByProvider {
+			result := DB.Model(&TopUp{}).
+				Where("payment_provider = ?", "").
+				Where("trade_no IN ?", tradeNos).
+				Update("payment_provider", provider)
+			if result.Error != nil {
+				return fmt.Errorf("failed to backfill top_ups.payment_provider: %w", result.Error)
+			}
+			updated += result.RowsAffected
+		}
+	}
+
+	if updated > 0 {
+		common.SysLog(fmt.Sprintf("Successfully backfilled payment_provider for %d top-up records mirrored from subscription orders", updated))
+	}
 	return nil
 }
 
@@ -431,6 +497,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`sort_order`" + ` integer DEFAULT 0,
 ` + "`is_recommended`" + ` numeric DEFAULT 0,
 ` + "`display_models`" + ` text DEFAULT '',
+` + "`allowed_models`" + ` text DEFAULT '',
 ` + "`allow_balance_pay`" + ` numeric DEFAULT 1,
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
 ` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
@@ -468,6 +535,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "sort_order", DDL: "`sort_order` integer DEFAULT 0"},
 		{Name: "is_recommended", DDL: "`is_recommended` numeric DEFAULT 0"},
 		{Name: "display_models", DDL: "`display_models` text DEFAULT ''"},
+		{Name: "allowed_models", DDL: "`allowed_models` text DEFAULT ''"},
 		{Name: "allow_balance_pay", DDL: "`allow_balance_pay` numeric DEFAULT 1"},
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
 		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},

@@ -68,7 +68,7 @@ export function StatisticsKpiCards(props: {
   return (
     <StaggerContainer
       className={cn(
-        'grid gap-3 sm:grid-cols-2 xl:grid-cols-4',
+        'grid shrink-0 grid-cols-2 gap-3 xl:grid-cols-4',
         props.className
       )}
     >

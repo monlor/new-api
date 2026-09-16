@@ -133,24 +133,46 @@ type tokenModelQuotaRow struct {
 	Quota     int64  `json:"quota"`
 }
 
+// userConsumeLogsQuery 单个用户的消耗日志基础查询（LOG_DB.logs，type=consume）。
+func userConsumeLogsQuery(userId int, startTime int64, endTime int64) *gorm.DB {
+	query := LOG_DB.Table("logs").
+		Where("user_id = ?", userId).
+		Where("type = ?", LogTypeConsume)
+	return applyRankingQuotaTimeRange(query, startTime, endTime)
+}
+
 // GetUserTokenModelQuota 统计某用户在周期内每个密钥按模型拆分的用量，
 // 供上层按模型最小有效倍率换算"原始价值"。
 func GetUserTokenModelQuota(userId int, startTime int64, endTime int64) ([]tokenModelQuotaRow, error) {
 	rows := make([]tokenModelQuotaRow, 0)
-
-	tx := LOG_DB.Table("logs").
-		Where("user_id = ?", userId).
-		Where("type = ?", LogTypeConsume).
-		Where("token_id > 0")
-	if startTime > 0 {
-		tx = tx.Where("created_at >= ?", startTime)
-	}
-	if endTime > 0 {
-		tx = tx.Where("created_at <= ?", endTime)
-	}
-
-	err := tx.Select("token_id, model_name, COALESCE(sum(quota), 0) as quota").
+	err := userConsumeLogsQuery(userId, startTime, endTime).
+		Where("token_id > 0").
+		Select("token_id, model_name, COALESCE(sum(quota), 0) as quota").
 		Group("token_id, model_name").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// UserModelUsageStat 某用户在周期内按模型聚合的用量。
+//
+// 与 TokenUsageStat 不同，这里不过滤 token_id，因此合计即该用户周期内的
+// 真实消耗（含没有关联密钥的调用）。
+type UserModelUsageStat struct {
+	ModelName        string   `json:"model_name"`
+	RequestCount     int64    `json:"request_count"`
+	Quota            int64    `json:"quota"`
+	OriginalValueUsd *float64 `json:"original_value_usd,omitempty"`
+	TokenUsed        int64    `json:"token_used"`
+}
+
+// GetUserModelUsageStat 统计某用户在周期内每个模型的消耗。
+func GetUserModelUsageStat(userId int, startTime int64, endTime int64) ([]UserModelUsageStat, error) {
+	rows := make([]UserModelUsageStat, 0)
+	err := userConsumeLogsQuery(userId, startTime, endTime).
+		Select("model_name, count(*) as request_count, COALESCE(sum(quota), 0) as quota, " +
+			consumeLogTokenUsedExpr + " as token_used").
+		Group("model_name").
+		Order("quota DESC").
 		Scan(&rows).Error
 	return rows, err
 }
@@ -168,23 +190,14 @@ const TokenStatusDeleted = -1
 func GetUserTokenUsageStat(userId int, startTime int64, endTime int64) ([]TokenUsageStat, error) {
 	rows := make([]TokenUsageStat, 0)
 
-	tx := LOG_DB.Table("logs").
-		Where("user_id = ?", userId).
-		Where("type = ?", LogTypeConsume).
-		Where("token_id > 0")
-	if startTime > 0 {
-		tx = tx.Where("created_at >= ?", startTime)
-	}
-	if endTime > 0 {
-		tx = tx.Where("created_at <= ?", endTime)
-	}
-
-	err := tx.Select("token_id, " +
-		"max(token_name) as token_name, " +
-		"count(*) as request_count, " +
-		"COALESCE(sum(quota), 0) as quota, " +
-		"COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) as token_used, " +
-		"max(created_at) as last_used_at").
+	err := userConsumeLogsQuery(userId, startTime, endTime).
+		Where("token_id > 0").
+		Select("token_id, "+
+			"max(token_name) as token_name, "+
+			"count(*) as request_count, "+
+			"COALESCE(sum(quota), 0) as quota, "+
+			consumeLogTokenUsedExpr+" as token_used, "+
+			"max(created_at) as last_used_at").
 		Group("token_id").
 		Order("quota DESC").
 		Scan(&rows).Error

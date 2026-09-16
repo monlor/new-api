@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -63,6 +64,17 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
+	}
+
+	if info.ReasoningEffort == "" {
+		if request.Reasoning != nil && request.Reasoning.Effort != "" {
+			info.ReasoningEffort = request.Reasoning.Effort
+		} else {
+			info.ReasoningEffort = reasoning.EffortFromModelName(info.OriginModelName)
+		}
+	}
+	if info.ThinkingBudget == nil {
+		info.ThinkingBudget = reasoning.ThinkingBudgetFromModelName(info.OriginModelName)
 	}
 
 	adaptor := GetAdaptor(info.ApiType)

@@ -20,7 +20,7 @@ import { api } from '@/lib/api'
 import type {
   RevenueResponse,
   StatisticsTimeRange,
-  UserTokenUsageResponse,
+  UserUsageDetailResponse,
   UserUsageResponse,
 } from './types'
 
@@ -48,16 +48,17 @@ export async function getUserStatistics(
 }
 
 /**
- * Per-API-key usage for a single user (the inline drill-down).
+ * Full usage detail for a single user: period summary plus the per-API-key and
+ * per-model breakdowns behind the user detail dialog.
  * The backend never returns plaintext key material.
  */
-export async function getUserTokenStatistics(
+export async function getUserUsageDetail(
   params: StatisticsTimeRange & { user_id: number }
 ) {
-  const res = await api.get<{ success: boolean; data: UserTokenUsageResponse }>(
-    '/api/statistics/users/tokens',
-    { params }
-  )
+  const res = await api.get<{
+    success: boolean
+    data: UserUsageDetailResponse
+  }>('/api/statistics/users/detail', { params })
   return res.data
 }
 

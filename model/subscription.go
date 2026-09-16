@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -39,6 +41,13 @@ const (
 	SubscriptionStatusActive    = "active"
 	SubscriptionStatusExpired   = "expired"
 	SubscriptionStatusCancelled = "cancelled"
+)
+
+// UserSubscription.Source values. Admin-assigned subscriptions are consumed
+// before every other source (see preConsumeUserSubscription).
+const (
+	SubscriptionSourceOrder = "order"
+	SubscriptionSourceAdmin = "admin"
 )
 
 var (
@@ -174,6 +183,10 @@ type SubscriptionPlan struct {
 	// Comma-separated model IDs to show per-model USD value for (same convention as Channel.Models)
 	DisplayModels string `json:"display_models" gorm:"type:text;default:''"`
 
+	// Comma-separated model IDs this plan may pay for (empty = no restriction).
+	// Snapshotted onto UserSubscription at creation.
+	AllowedModels string `json:"allowed_models" gorm:"type:text;default:''"`
+
 	AllowBalancePay *bool `json:"allow_balance_pay"`
 
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
@@ -243,6 +256,29 @@ func (p *SubscriptionPlan) GetDisplayModels() []string {
 	return SplitDisplayModels(p.DisplayModels)
 }
 
+// SubscriptionAllowsModel reports whether a subscription whose allowed-model
+// whitelist is allowedModels may pay for modelName.
+// An empty whitelist means "no restriction". An empty modelName means the caller
+// has no model context, so it degrades to "do not filter" instead of hiding quota.
+// Matching mirrors the token model-limit check in middleware/distributor.go:
+// both the raw name and ratio_setting.FormatMatchingModelName are accepted.
+func SubscriptionAllowsModel(allowedModels string, modelName string) bool {
+	if strings.TrimSpace(allowedModels) == "" {
+		return true
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return true
+	}
+	matchName := ratio_setting.FormatMatchingModelName(modelName)
+	for _, allowed := range SplitDisplayModels(allowedModels) {
+		if allowed == modelName || allowed == matchName {
+			return true
+		}
+	}
+	return false
+}
+
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
 	Id     int     `json:"id"`
@@ -297,6 +333,14 @@ type UserSubscription struct {
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
 
 	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
+
+	// Comma-separated model IDs this subscription may pay for (empty = no restriction).
+	// Snapshotted from the plan at creation; editable per subscription.
+	AllowedModels string `json:"allowed_models" gorm:"type:text;default:''"`
+
+	// Optional admin-supplied label, only meaningful for plan-less subscriptions
+	// (plan_id <= 0). Empty means the UI falls back to "自定义分配".
+	CustomName string `json:"custom_name" gorm:"type:varchar(128);default:''"`
 
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
@@ -580,6 +624,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		EndTime:       endUnix,
 		Status:        "active",
 		Source:        source,
+		AllowedModels: plan.AllowedModels,
 		LastResetTime: lastReset,
 		NextResetTime: nextReset,
 		UpgradeGroup:  upgradeGroup,
@@ -694,14 +739,15 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
-				UserId:        order.UserId,
-				Amount:        0,
-				Money:         order.Money,
-				TradeNo:       order.TradeNo,
-				PaymentMethod: order.PaymentMethod,
-				CreateTime:    order.CreateTime,
-				CompleteTime:  now,
-				Status:        common.TopUpStatusSuccess,
+				UserId:          order.UserId,
+				Amount:          0,
+				Money:           order.Money,
+				TradeNo:         order.TradeNo,
+				PaymentMethod:   order.PaymentMethod,
+				PaymentProvider: order.PaymentProvider,
+				CreateTime:      order.CreateTime,
+				CompleteTime:    now,
+				Status:          common.TopUpStatusSuccess,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -711,6 +757,11 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
 	} else if topup.PaymentMethod != order.PaymentMethod {
+		return ErrPaymentMethodMismatch
+	}
+	if topup.PaymentProvider == "" {
+		topup.PaymentProvider = order.PaymentProvider
+	} else if order.PaymentProvider != "" && topup.PaymentProvider != order.PaymentProvider {
 		return ErrPaymentMethodMismatch
 	}
 	if topup.CreateTime == 0 {
@@ -756,7 +807,7 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return "", err
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, SubscriptionSourceAdmin)
 		return err
 	})
 	if err != nil {
@@ -767,6 +818,60 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
 	}
 	return "", nil
+}
+
+// AdminAssignCustomSubscription creates a standalone UserSubscription that is not
+// backed by any SubscriptionPlan (PlanId = 0). The admin supplies the validity
+// period, the allowed-model whitelist and the quota directly.
+// No purchase limit, no group upgrade and no periodic quota reset apply.
+func AdminAssignCustomSubscription(userId int, durationUnit string, durationValue int, customSeconds int64, allowedModels string, totalAmount int64, customName string) (*UserSubscription, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	if totalAmount < 0 {
+		return nil, errors.New("额度不能为负数")
+	}
+	allowedModels = strings.TrimSpace(allowedModels)
+	if !DisplayModelsWellFormed(allowedModels) {
+		return nil, errors.New("可用模型列表格式错误")
+	}
+	customName = strings.TrimSpace(customName)
+	// Non-persisted template: calcPlanEndTime only reads these three fields.
+	template := &SubscriptionPlan{
+		DurationUnit:  durationUnit,
+		DurationValue: durationValue,
+		CustomSeconds: customSeconds,
+	}
+	var sub *UserSubscription
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		nowUnix := getDBTimestampWith(tx)
+		now := time.Unix(nowUnix, 0)
+		endUnix, err := calcPlanEndTime(now, template)
+		if err != nil {
+			return err
+		}
+		sub = &UserSubscription{
+			UserId:        userId,
+			PlanId:        0,
+			AmountTotal:   totalAmount,
+			AmountUsed:    0,
+			StartTime:     now.Unix(),
+			EndTime:       endUnix,
+			Status:        SubscriptionStatusActive,
+			Source:        SubscriptionSourceAdmin,
+			AllowedModels: allowedModels,
+			CustomName:    customName,
+			LastResetTime: 0,
+			NextResetTime: 0,
+			CreatedAt:     common.GetTimestamp(),
+			UpdatedAt:     common.GetTimestamp(),
+		}
+		return tx.Create(sub).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sub, nil
 }
 
 func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
@@ -935,13 +1040,43 @@ func subscriptionEffectiveRemaining(sub UserSubscription, now int64) (int64, boo
 }
 
 func loadActiveUserSubscriptions(userId int) ([]UserSubscription, error) {
+	return loadActiveUserSubscriptionsForModel(userId, "")
+}
+
+// loadActiveUserSubscriptionsForModel loads active subscriptions, dropping those
+// whose allowed-model whitelist excludes modelName. An empty modelName disables
+// filtering (callers without model context see every subscription).
+func loadActiveUserSubscriptionsForModel(userId int, modelName string) ([]UserSubscription, error) {
 	now := common.GetTimestamp()
 	var subs []UserSubscription
 	if err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 		Find(&subs).Error; err != nil {
 		return nil, err
 	}
-	return subs, nil
+	return filterSubscriptionsByModel(subs, modelName), nil
+}
+
+func filterSubscriptionsByModel(subs []UserSubscription, modelName string) []UserSubscription {
+	if strings.TrimSpace(modelName) == "" {
+		return subs
+	}
+	out := make([]UserSubscription, 0, len(subs))
+	for _, sub := range subs {
+		if SubscriptionAllowsModel(sub.AllowedModels, modelName) {
+			out = append(out, sub)
+		}
+	}
+	return out
+}
+
+// sortSubscriptionsByPriority stably moves admin-assigned subscriptions to the
+// front, keeping the caller's existing order (end_time asc, id asc) otherwise.
+// Done in Go rather than SQL because ORDER BY CASE / FIELD() is not portable
+// across SQLite, MySQL and PostgreSQL (Rule 2).
+func sortSubscriptionsByPriority(subs []UserSubscription) {
+	sort.SliceStable(subs, func(i, j int) bool {
+		return subs[i].Source == SubscriptionSourceAdmin && subs[j].Source != SubscriptionSourceAdmin
+	})
 }
 
 // GetActiveSubscriptionRemaining sums remaining quota across active subscriptions.
@@ -949,11 +1084,15 @@ func loadActiveUserSubscriptions(userId int) ([]UserSubscription, error) {
 // A due reset is counted as a full unused period without writing, and only when
 // the plan's reset period is not never.
 func GetActiveSubscriptionRemaining(userId int) (remaining int64, unlimited bool, err error) {
+	return GetActiveSubscriptionRemainingForModel(userId, "")
+}
+
+func GetActiveSubscriptionRemainingForModel(userId int, modelName string) (remaining int64, unlimited bool, err error) {
 	if userId <= 0 {
 		return 0, false, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
-	subs, err := loadActiveUserSubscriptions(userId)
+	subs, err := loadActiveUserSubscriptionsForModel(userId, modelName)
 	if err != nil {
 		return 0, false, err
 	}
@@ -970,14 +1109,18 @@ func GetActiveSubscriptionRemaining(userId int) (remaining int64, unlimited bool
 // CanFullyCoverSubscriptionNeed is true when unlimited or any one active
 // subscription's effective remaining (after due-reset accounting) >= need.
 func CanFullyCoverSubscriptionNeed(userId int, need int64) (bool, error) {
+	return CanFullyCoverSubscriptionNeedForModel(userId, "", need)
+}
+
+func CanFullyCoverSubscriptionNeedForModel(userId int, modelName string, need int64) (bool, error) {
 	if userId <= 0 {
 		return false, errors.New("invalid userId")
 	}
 	if need <= 0 {
-		return HasUsableSubscriptionQuota(userId)
+		return HasUsableSubscriptionQuotaForModel(userId, modelName)
 	}
 	now := common.GetTimestamp()
-	subs, err := loadActiveUserSubscriptions(userId)
+	subs, err := loadActiveUserSubscriptionsForModel(userId, modelName)
 	if err != nil {
 		return false, err
 	}
@@ -991,8 +1134,12 @@ func CanFullyCoverSubscriptionNeed(userId int, need int64) (bool, error) {
 }
 
 // GetSoonestSubscriptionLeftover returns the leftover PreConsumeUserSubscriptionUpTo
-// would spend (soonest-expiring sub with remaining > 0).
+// would spend (first candidate with remaining > 0, in consumption order).
 func GetSoonestSubscriptionLeftover(userId int) (leftover int64, unlimited bool, err error) {
+	return GetSoonestSubscriptionLeftoverForModel(userId, "")
+}
+
+func GetSoonestSubscriptionLeftoverForModel(userId int, modelName string) (leftover int64, unlimited bool, err error) {
 	if userId <= 0 {
 		return 0, false, errors.New("invalid userId")
 	}
@@ -1003,6 +1150,10 @@ func GetSoonestSubscriptionLeftover(userId int) (leftover int64, unlimited bool,
 		Find(&subs).Error; err != nil {
 		return 0, false, err
 	}
+	// Must mirror preConsumeUserSubscription's candidate order, otherwise the
+	// wallet remainder computed by trySplit would not match the sub charged.
+	subs = filterSubscriptionsByModel(subs, modelName)
+	sortSubscriptionsByPriority(subs)
 	for _, sub := range subs {
 		remain, unlim := subscriptionEffectiveRemaining(sub, now)
 		if unlim {
@@ -1019,7 +1170,11 @@ func GetSoonestSubscriptionLeftover(userId int) (leftover int64, unlimited bool,
 // Active-but-empty subscriptions are treated as unusable so leftover-zero users
 // are routed to wallet-capable channels.
 func HasUsableSubscriptionQuota(userId int) (bool, error) {
-	remaining, unlimited, err := GetActiveSubscriptionRemaining(userId)
+	return HasUsableSubscriptionQuotaForModel(userId, "")
+}
+
+func HasUsableSubscriptionQuotaForModel(userId int, modelName string) (bool, error) {
+	remaining, unlimited, err := GetActiveSubscriptionRemainingForModel(userId, modelName)
 	if err != nil {
 		return false, err
 	}
@@ -1183,6 +1338,7 @@ func AdminSyncPlanToUserSubscriptions(planId int, plan *SubscriptionPlan, usedQu
 			updates := map[string]any{
 				"amount_total":    sub.AmountTotal,
 				"next_reset_time": sub.NextResetTime,
+				"allowed_models":  plan.AllowedModels,
 			}
 
 			if usedQuotaMode == "proportional" && oldAmountTotal > 0 && plan.TotalAmount != oldAmountTotal {
@@ -1262,9 +1418,12 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 // into cancelled; already-cancelled keeps historical end_time unless endTime is sent.
 // When the resulting row is effectively active, UpgradeGroup is restored onto the user
 // without overwriting PrevUserGroup.
-func AdminUpdateUserSubscription(userSubscriptionId int, amountUsed, amountTotal, endTime *int64, status *string) (*UserSubscription, error) {
+func AdminUpdateUserSubscription(userSubscriptionId int, amountUsed, amountTotal, endTime *int64, status *string, allowedModels *string, customName *string) (*UserSubscription, error) {
 	if userSubscriptionId <= 0 {
 		return nil, errors.New("invalid userSubscriptionId")
+	}
+	if allowedModels != nil && !DisplayModelsWellFormed(*allowedModels) {
+		return nil, errors.New("可用模型列表格式错误")
 	}
 	now := common.GetTimestamp()
 	cacheGroup := ""
@@ -1322,6 +1481,12 @@ func AdminUpdateUserSubscription(userSubscriptionId int, amountUsed, amountTotal
 		}
 		if status != nil {
 			updates["status"] = *status
+		}
+		if allowedModels != nil {
+			updates["allowed_models"] = strings.TrimSpace(*allowedModels)
+		}
+		if customName != nil {
+			updates["custom_name"] = strings.TrimSpace(*customName)
 		}
 
 		if err := tx.Model(&sub).Updates(updates).Error; err != nil {
@@ -1576,6 +1741,11 @@ func preConsumeUserSubscription(requestId string, userId int, modelName string, 
 				Find(&subs).Error; err != nil {
 				return errors.New("no active subscription")
 			}
+			// Subscriptions whose whitelist excludes this model are skipped here;
+			// the caller falls back to other subscriptions / the wallet.
+			subs = filterSubscriptionsByModel(subs, modelName)
+			// Admin-assigned subscriptions are always consumed first.
+			sortSubscriptionsByPriority(subs)
 			if len(subs) == 0 {
 				return errors.New("no active subscription")
 			}
@@ -1645,12 +1815,23 @@ func preConsumeUserSubscription(requestId string, userId int, modelName string, 
 			var leftoverRemain int64
 			for _, candidate := range subs {
 				sub := candidate
-				plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
-				if err != nil {
-					return err
+				// Custom admin assignments have no plan behind them (PlanId = 0)
+				// and simply never reset. A missing/errored plan for PlanId > 0
+				// must still fail the consume — swallowing it would skip a due
+				// reset and charge a subscription whose plan can no longer be
+				// loaded (deleted plan, DB error).
+				var plan *SubscriptionPlan
+				if sub.PlanId > 0 {
+					loaded, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+					if err != nil {
+						return err
+					}
+					plan = loaded
 				}
-				if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
-					return err
+				if plan != nil {
+					if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+						return err
+					}
 				}
 				usedBefore := sub.AmountUsed
 				if sub.AmountTotal > 0 {

@@ -17,11 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
-import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber, formatQuota, formatTokens } from '@/lib/format'
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { formatOriginalValueUsd } from '../lib/format'
 import type { UserUsageItem } from '../types'
 import { TrendSparkline } from './trend-sparkline'
@@ -30,34 +27,6 @@ export function useUserUsageColumns(): ColumnDef<UserUsageItem>[] {
   const { t } = useTranslation()
 
   return [
-    {
-      id: 'expander',
-      header: '',
-      cell: ({ row }) => (
-        <Button
-          type='button'
-          variant='ghost'
-          size='icon'
-          className='size-7'
-          aria-label={t('View API key breakdown')}
-          aria-expanded={row.getIsExpanded()}
-          onClick={(event) => {
-            event.stopPropagation()
-            row.toggleExpanded()
-          }}
-        >
-          <ChevronRight
-            className={cn(
-              'size-4 transition-transform',
-              row.getIsExpanded() && 'rotate-90'
-            )}
-          />
-        </Button>
-      ),
-      enableSorting: false,
-      enableHiding: false,
-      size: 48,
-    },
     {
       accessorKey: 'username',
       header: t('Username'),

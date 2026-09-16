@@ -25,6 +25,7 @@ import {
   type StaticDataTableColumn,
 } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import { revenueProviderLabelKey } from '../constants'
 import type { RevenueRecentTopUp, RevenueTopUser } from '../types'
 
 function TablePanel(props: {
@@ -125,15 +126,20 @@ export function RecentTopUpsTable(props: {
       cell: (row) => row.trade_no || '-',
     },
     {
-      id: 'user_id',
-      header: t('User ID'),
-      cellClassName: 'tabular-nums',
-      cell: (row) => row.user_id,
+      id: 'username',
+      header: t('Username'),
+      cell: (row) => (
+        <span className='font-medium'>{row.username || `#${row.user_id}`}</span>
+      ),
     },
     {
       id: 'payment_method',
       header: t('Payment Method'),
-      cell: (row) => row.payment_provider || row.payment_method || '-',
+      cell: (row) => {
+        const labelKey = revenueProviderLabelKey(row.payment_provider)
+        if (labelKey) return t(labelKey)
+        return row.payment_provider || row.payment_method || '-'
+      },
     },
     {
       id: 'money',

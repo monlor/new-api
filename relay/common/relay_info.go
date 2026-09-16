@@ -118,6 +118,7 @@ type RelayInfo struct {
 	IsFirstRequest         bool
 	AudioUsage             bool
 	ReasoningEffort        string
+	ThinkingBudget         *int
 	UserSetting            dto.UserSetting
 	UserEmail              string
 	UserQuota              int
@@ -294,6 +295,9 @@ func (info *RelayInfo) ToString() string {
 	// Reasoning
 	if info.ReasoningEffort != "" {
 		fmt.Fprintf(b, "ReasoningEffort: %q, ", info.ReasoningEffort)
+	}
+	if info.ThinkingBudget != nil {
+		fmt.Fprintf(b, "ThinkingBudget: %d, ", *info.ThinkingBudget)
 	}
 
 	// Price data (non-sensitive)

@@ -58,6 +58,10 @@ import {
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { ModelBadge } from '../model-badge'
+import {
+  ReasoningEffortBadge,
+  ThinkingBudgetBadge,
+} from '../reasoning-effort-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
 interface DetailSegment {
@@ -537,13 +541,24 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         if (!isDisplayableLogType(log.type)) return null
 
         const modelInfo = formatModelName(log)
+        const other = parseLogOther(log.other)
+        const reasoningEffort = other?.reasoning_effort
+        const thinkingBudget = other?.thinking_budget
 
         return (
-          <div className='flex w-fit flex-col gap-0.5'>
+          <div className='flex w-fit items-center gap-1.5'>
             <ModelBadge
               modelName={modelInfo.name}
               actualModel={modelInfo.actualModel}
             />
+            {reasoningEffort ? (
+              <ReasoningEffortBadge effort={reasoningEffort} />
+            ) : thinkingBudget != null ? (
+              <ThinkingBudgetBadge
+                budget={thinkingBudget}
+                label={t('Budget')}
+              />
+            ) : null}
           </div>
         )
       },

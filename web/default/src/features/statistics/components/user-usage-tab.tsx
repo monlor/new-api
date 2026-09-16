@@ -16,13 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { ExpandedState } from '@tanstack/react-table'
+import { useMediaQuery } from '@/hooks'
 import { Coins, DollarSign, Hash, Layers, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber, formatQuota, formatTokens } from '@/lib/format'
-import { TableCell, TableRow } from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 import {
   DataTablePage,
   DataTableRow,
@@ -38,7 +38,7 @@ import {
   StatisticsKpiCards,
   type StatisticsKpiCard,
 } from './statistics-kpi-cards'
-import { UserTokensSubtable } from './user-tokens-subtable'
+import { UserDetailDialog } from './user-detail-dialog'
 import { useUserUsageColumns } from './user-usage-columns'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -47,13 +47,14 @@ export function UserUsageTab() {
   const { t } = useTranslation()
   const columns = useUserUsageColumns()
   const period = useStatisticsPeriod(STATISTICS_DEFAULT_PERIOD)
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   const [keyword, setKeyword] = useState('')
   const [pagination, setPagination] = useState({
     pageIndex: 0,
     pageSize: DEFAULT_PAGE_SIZE,
   })
-  const [expanded, setExpanded] = useState<ExpandedState>({})
+  const [detailUser, setDetailUser] = useState<UserUsageItem | null>(null)
 
   const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: [
@@ -103,9 +104,6 @@ export function UserUsageTab() {
     onPaginationChange: setPagination,
     globalFilter: keyword,
     onGlobalFilterChange: handleGlobalFilterChange,
-    expanded,
-    onExpandedChange: setExpanded,
-    withExpandedRowModel: true,
     totalCount: data?.data?.total ?? 0,
   })
 
@@ -162,7 +160,7 @@ export function UserUsageTab() {
   }
 
   return (
-    <div className='flex h-full min-h-0 flex-col gap-3'>
+    <div className={cn('flex flex-col gap-3', !isMobile && 'h-full min-h-0')}>
       <StatisticsKpiCards
         items={kpiCards}
         loading={isLoading}
@@ -170,12 +168,13 @@ export function UserUsageTab() {
         className='xl:grid-cols-5'
       />
 
-      <div className='flex min-h-0 flex-1 flex-col'>
+      <div className={cn('flex flex-col', !isMobile && 'min-h-0 flex-1')}>
         <DataTablePage
           table={table}
           columns={columns}
           isLoading={isLoading}
           isFetching={isFetching}
+          fixedHeight={!isMobile}
           emptyTitle={t('No Usage Data Found')}
           emptyDescription={t(
             'No user consumption recorded in the selected period.'
@@ -203,30 +202,37 @@ export function UserUsageTab() {
               />
             ),
           }}
+          mobileProps={{
+            onRowClick: (row) => setDetailUser(row.original),
+          }}
           renderRow={(row) => (
-            <Fragment key={row.id}>
-              <DataTableRow
-                row={row}
-                className='transition-colors'
-                getColumnClassName={() => 'py-2'}
-              />
-              {row.getIsExpanded() && (
-                <TableRow className='hover:bg-transparent'>
-                  <TableCell
-                    colSpan={row.getVisibleCells().length}
-                    className='bg-muted/30 p-0'
-                  >
-                    <UserTokensSubtable
-                      userId={row.original.user_id}
-                      range={period.range}
-                    />
-                  </TableCell>
-                </TableRow>
-              )}
-            </Fragment>
+            <DataTableRow
+              key={row.id}
+              row={row}
+              className='hover:bg-muted/50 cursor-pointer transition-colors'
+              getColumnClassName={() => 'py-2'}
+              role='button'
+              tabIndex={0}
+              aria-label={t('View usage details')}
+              onClick={() => setDetailUser(row.original)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                setDetailUser(row.original)
+              }}
+            />
           )}
         />
       </div>
+
+      <UserDetailDialog
+        user={detailUser}
+        range={period.range}
+        open={detailUser !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailUser(null)
+        }}
+      />
     </div>
   )
 }

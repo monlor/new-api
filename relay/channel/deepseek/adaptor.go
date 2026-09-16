@@ -87,6 +87,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if err := applyDeepSeekV4OpenAIThinkingSuffix(info, request); err != nil {
 		return nil, err
 	}
+	if info != nil && info.ReasoningEffort == "" {
+		info.ReasoningEffort = reasoning.EffortFromModelName(info.OriginModelName)
+		if info.ReasoningEffort == "" {
+			info.ReasoningEffort = reasoning.EffortFromModelName(request.Model)
+		}
+	}
 
 	return request, nil
 }

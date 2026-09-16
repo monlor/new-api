@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
-import type { Control } from 'react-hook-form'
+import { useMemo, type ReactNode } from 'react'
+import type { Control, FieldValues, Path } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import {
   FormControl,
@@ -28,15 +28,25 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { MultiSelect } from '@/components/multi-select'
-import type { PlanFormValues } from '../lib'
 import { parseDisplayModels } from '../lib/display-models'
 
-interface PlanDisplayModelsFieldProps {
-  control: Control<PlanFormValues>
+interface PlanModelsFieldProps<T extends FieldValues> {
+  control: Control<T>
+  /** Comma-separated string field to bind, e.g. display_models / allowed_models. */
+  name: Path<T>
   modelOptions: { value: string; label: string }[]
+  label?: ReactNode
+  description?: ReactNode
+  placeholder?: string
 }
 
-export function PlanDisplayModelsField(props: PlanDisplayModelsFieldProps) {
+/**
+ * Multi-select bound to a comma-separated model list. Shared by the plan form,
+ * the custom-assignment form and the single-subscription edit form.
+ */
+export function PlanModelsField<T extends FieldValues>(
+  props: PlanModelsFieldProps<T>
+) {
   const { t } = useTranslation()
   const knownValues = useMemo(
     () => new Set(props.modelOptions.map((o) => o.value)),
@@ -46,7 +56,7 @@ export function PlanDisplayModelsField(props: PlanDisplayModelsFieldProps) {
   return (
     <FormField
       control={props.control}
-      name='display_models'
+      name={props.name}
       render={({ field }) => {
         const selected = parseDisplayModels(field.value || '')
         const extras = selected
@@ -59,20 +69,20 @@ export function PlanDisplayModelsField(props: PlanDisplayModelsFieldProps) {
 
         return (
           <FormItem>
-            <FormLabel>{t('Display Models')}</FormLabel>
+            <FormLabel>{props.label ?? t('Display Models')}</FormLabel>
             <FormControl>
               <MultiSelect
                 options={options}
                 selected={selected}
                 onChange={(values) => field.onChange(values.join(','))}
-                placeholder={t('Select models to showcase')}
+                placeholder={
+                  props.placeholder ?? t('Select models to showcase')
+                }
               />
             </FormControl>
-            <FormDescription>
-              {t(
-                'Shown on the purchase page as "how much of this model the quota is worth".'
-              )}
-            </FormDescription>
+            {props.description ? (
+              <FormDescription>{props.description}</FormDescription>
+            ) : null}
             <FormMessage />
           </FormItem>
         )

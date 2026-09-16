@@ -452,6 +452,11 @@ const LoginForm = () => {
       );
       const finish = finishRes.data;
       if (finish.success) {
+        if (finish.data && finish.data.require_2fa) {
+          setShowTwoFA(true);
+          return;
+        }
+
         userDispatch({ type: 'login', payload: finish.data });
         setUserData(finish.data);
         updateAPI();

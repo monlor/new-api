@@ -264,10 +264,13 @@ export function UserAuthForm({
         throw new Error(t('Missing user data from Passkey login response'))
       }
 
-      await handleLoginSuccess(
-        finish.data as { id?: number } | null,
-        redirectTo
-      )
+      const finishData = finish.data as { id?: number; require_2fa?: boolean }
+      if (finishData.require_2fa) {
+        redirectTo2FA()
+        return
+      }
+
+      await handleLoginSuccess(finishData, redirectTo)
       toast.success(t('Signed in with Passkey'))
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === 'NotAllowedError') {

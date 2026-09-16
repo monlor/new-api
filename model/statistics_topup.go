@@ -149,6 +149,21 @@ func GetTopRechargeUsers(startTime int64, endTime int64, provider string, limit 
 	for _, row := range rows {
 		userIds = append(userIds, row.UserId)
 	}
+	nameById, err := usernamesByIds(userIds)
+	if err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		rows[i].Username = nameById[rows[i].UserId]
+	}
+	return rows, nil
+}
+
+// usernamesByIds 批量查询用户名，避免统计聚合与 users 表做 JOIN。
+func usernamesByIds(userIds []int) (map[int]string, error) {
+	if len(userIds) == 0 {
+		return map[int]string{}, nil
+	}
 	type userMeta struct {
 		Id       int
 		Username string
@@ -161,17 +176,33 @@ func GetTopRechargeUsers(startTime int64, endTime int64, provider string, limit 
 	for _, meta := range metas {
 		nameById[meta.Id] = meta.Username
 	}
-	for i := range rows {
-		rows[i].Username = nameById[rows[i].UserId]
-	}
-	return rows, nil
+	return nameById, nil
+}
+
+// RevenueRecentTopUp 最近充值记录的一行。
+//
+// 独立扁平结构而非嵌入 TopUp：TopUp 有自定义 MarshalJSON（model/topup.go）用于
+// 兼容 Epay 的小数金额，嵌入会连带那套序列化逻辑。这里字段显式列出，也顺带
+// 避免把 TopUp 将来新增的字段无意暴露给统计接口。
+type RevenueRecentTopUp struct {
+	Id              int     `json:"id"`
+	UserId          int     `json:"user_id"`
+	Username        string  `json:"username"`
+	Amount          int64   `json:"amount"`
+	Money           float64 `json:"money"`
+	TradeNo         string  `json:"trade_no"`
+	PaymentMethod   string  `json:"payment_method"`
+	PaymentProvider string  `json:"payment_provider"`
+	CreateTime      int64   `json:"create_time"`
+	CompleteTime    int64   `json:"complete_time"`
+	Status          string  `json:"status"`
 }
 
 // GetRecentTopUps 返回周期内最近的成功充值记录（同样排除 balance）。
 //
 // 现有 GetAllTopUps / SearchAllTopUps 没有时间范围与口径过滤，无法直接用于统计周期，
-// 因此这里单独实现。返回的 TopUp 结构不含敏感字段。
-func GetRecentTopUps(startTime int64, endTime int64, provider string, limit int) ([]*TopUp, error) {
+// 因此这里单独实现。用户名与 GetTopRechargeUsers 一样走批量 IN 查询补齐，不做 JOIN。
+func GetRecentTopUps(startTime int64, endTime int64, provider string, limit int) ([]*RevenueRecentTopUp, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -181,11 +212,37 @@ func GetRecentTopUps(startTime int64, endTime int64, provider string, limit int)
 	if err != nil {
 		return nil, err
 	}
+
+	rows := make([]*RevenueRecentTopUp, 0, len(topups))
+	userIds := make([]int, 0, len(topups))
 	for _, topUp := range topups {
 		if topUp == nil {
 			continue
 		}
-		topUp.Money = topUpMoneyUSD(topUp.PaymentProvider, topUp.Money)
+		rows = append(rows, &RevenueRecentTopUp{
+			Id:              topUp.Id,
+			UserId:          topUp.UserId,
+			Amount:          topUp.Amount,
+			Money:           topUpMoneyUSD(topUp.PaymentProvider, topUp.Money),
+			TradeNo:         topUp.TradeNo,
+			PaymentMethod:   topUp.PaymentMethod,
+			PaymentProvider: topUp.PaymentProvider,
+			CreateTime:      topUp.CreateTime,
+			CompleteTime:    topUp.CompleteTime,
+			Status:          topUp.Status,
+		})
+		userIds = append(userIds, topUp.UserId)
 	}
-	return topups, nil
+	if len(rows) == 0 {
+		return rows, nil
+	}
+
+	nameById, err := usernamesByIds(userIds)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		row.Username = nameById[row.UserId]
+	}
+	return rows, nil
 }

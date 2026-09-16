@@ -78,7 +78,9 @@ func EffectiveChannelSelectBillingType(c *gin.Context) int {
 		hasSub := false
 		if userId > 0 {
 			var subErr error
-			hasSub, subErr = model.HasUsableSubscriptionQuota(userId)
+			// Empty model name (not yet resolved) disables the allowed-model filter.
+			modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+			hasSub, subErr = model.HasUsableSubscriptionQuotaForModel(userId, modelName)
 			if subErr != nil {
 				// Fail closed to wallet-capable channels so a subscription lookup
 				// error cannot pin the request to a subscription-only channel.
@@ -108,15 +110,16 @@ func RefreshEffectiveChannelSelectBillingType(c *gin.Context, need int) int {
 		canUse := false
 		if userId > 0 {
 			var subErr error
+			modelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 			if need <= 0 {
 				var remaining int64
 				var unlimited bool
-				remaining, unlimited, subErr = model.GetActiveSubscriptionRemaining(userId)
+				remaining, unlimited, subErr = model.GetActiveSubscriptionRemainingForModel(userId, modelName)
 				if subErr == nil {
 					canUse = unlimited || remaining > 0
 				}
 			} else {
-				canUse, subErr = model.CanFullyCoverSubscriptionNeed(userId, int64(need))
+				canUse, subErr = model.CanFullyCoverSubscriptionNeedForModel(userId, modelName, int64(need))
 			}
 			if subErr != nil {
 				// Fail closed to wallet-capable channels, same as EffectiveChannelSelectBillingType.

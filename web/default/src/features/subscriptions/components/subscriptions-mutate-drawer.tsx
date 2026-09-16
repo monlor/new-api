@@ -78,7 +78,7 @@ import {
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
-import { PlanDisplayModelsField } from './plan-display-models-field'
+import { PlanModelsField } from './plan-models-field'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -518,9 +518,26 @@ export function SubscriptionsMutateDrawer({
                 />
               </div>
 
-              <PlanDisplayModelsField
+              <PlanModelsField
                 control={form.control}
+                name='display_models'
                 modelOptions={modelOptions}
+                label={t('Display Models')}
+                description={t(
+                  'Shown on the purchase page as "how much of this model the quota is worth".'
+                )}
+                placeholder={t('Select models to showcase')}
+              />
+
+              <PlanModelsField
+                control={form.control}
+                name='allowed_models'
+                modelOptions={modelOptions}
+                label={t('Allowed Models')}
+                description={t(
+                  'Only these models can be paid for by this subscription. Leave empty for no restriction. Requests for other models fall back to the wallet.'
+                )}
+                placeholder={t('Leave empty for no restriction')}
               />
             </SideDrawerSection>
 

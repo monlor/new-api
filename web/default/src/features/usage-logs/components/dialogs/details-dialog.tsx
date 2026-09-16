@@ -61,6 +61,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
+import { ReasoningEffortBadge } from '../reasoning-effort-badge'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -921,24 +922,22 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
-        {/* Reasoning effort */}
+        {/* Reasoning effort / thinking budget */}
         {other?.reasoning_effort && (
           <DetailRow
             label={t('Reasoning Effort')}
+            value={<ReasoningEffortBadge effort={other.reasoning_effort} />}
+          />
+        )}
+        {other?.thinking_budget != null && (
+          <DetailRow
+            label={t('Thinking Budget')}
             value={
-              <StatusBadge
-                label={other.reasoning_effort}
-                variant={
-                  other.reasoning_effort === 'high'
-                    ? 'orange'
-                    : other.reasoning_effort === 'medium'
-                      ? 'yellow'
-                      : 'green'
-                }
-                size='sm'
-                copyable={false}
-              />
+              other.thinking_budget === 0
+                ? '0'
+                : formatTokens(other.thinking_budget)
             }
+            mono
           />
         )}
 

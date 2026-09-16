@@ -43,6 +43,11 @@ interface MobileCardListProps<TData> {
   emptyDescription?: string
   getRowKey?: (row: Row<TData>) => string | number
   getRowClassName?: (row: Row<TData>) => string | undefined
+  /**
+   * Makes each row activatable (click, Enter, Space). Rows stay plain `div`s
+   * when omitted, so existing tables are unaffected.
+   */
+  onRowClick?: (row: Row<TData>) => void
 }
 
 function getCellLabel<TData>(cell: Cell<TData, unknown>): string | null {
@@ -270,6 +275,7 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
     emptyDescription,
     getRowKey,
     getRowClassName,
+    onRowClick,
   } = props
   const { t } = useTranslation()
 
@@ -317,7 +323,21 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
         return (
           <div
             key={key}
-            className={cn('bg-card px-3 py-2.5', getRowClassName?.(row))}
+            className={cn(
+              'bg-card px-3 py-2.5',
+              onRowClick && 'active:bg-muted/50 cursor-pointer',
+              getRowClassName?.(row)
+            )}
+            {...(onRowClick && {
+              role: 'button',
+              tabIndex: 0,
+              onClick: () => onRowClick(row),
+              onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                onRowClick(row)
+              },
+            })}
           >
             <RowComponent row={row} />
           </div>

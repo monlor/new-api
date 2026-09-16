@@ -597,7 +597,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
-		canCover, coverErr := model.CanFullyCoverSubscriptionNeed(relayInfo.UserId, int64(need))
+		canCover, coverErr := model.CanFullyCoverSubscriptionNeedForModel(relayInfo.UserId, relayInfo.OriginModelName, int64(need))
 		if coverErr != nil {
 			return nil, types.NewError(coverErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 		}
@@ -605,7 +605,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if canCover {
 			walletNeed = 0
 		} else {
-			leftover, unlimited, leftoverErr := model.GetSoonestSubscriptionLeftover(relayInfo.UserId)
+			leftover, unlimited, leftoverErr := model.GetSoonestSubscriptionLeftoverForModel(relayInfo.UserId, relayInfo.OriginModelName)
 			if leftoverErr != nil {
 				return nil, types.NewError(leftoverErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 			}
@@ -664,7 +664,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return trySubscription()
 	}
 
-	hasUsable, subCheckErr := model.HasUsableSubscriptionQuota(relayInfo.UserId)
+	hasUsable, subCheckErr := model.HasUsableSubscriptionQuotaForModel(relayInfo.UserId, relayInfo.OriginModelName)
 	if subCheckErr != nil {
 		return nil, types.NewError(subCheckErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
@@ -675,7 +675,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	if need <= 0 {
 		need = 1
 	}
-	remain, unlimited, remainErr := model.GetActiveSubscriptionRemaining(relayInfo.UserId)
+	remain, unlimited, remainErr := model.GetActiveSubscriptionRemainingForModel(relayInfo.UserId, relayInfo.OriginModelName)
 	if remainErr != nil {
 		return nil, types.NewError(remainErr, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}

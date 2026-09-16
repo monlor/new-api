@@ -70,6 +70,40 @@ func TestGetUserConsumeStatExcludesNonConsumeAndOutsideWindow(t *testing.T) {
 	require.Equal(t, "alice", filtered[0].Username)
 }
 
+// TestGetUserModelUsageStat 模型维度不按 token_id 过滤，因此合计即该用户周期内的真实消耗。
+func TestGetUserModelUsageStat(t *testing.T) {
+	setupConsumeStatTestDB(t)
+
+	start, end := int64(1000), int64(2000)
+	require.NoError(t, LOG_DB.Create([]*Log{
+		{UserId: 3, Username: "admin", Type: LogTypeConsume, ModelName: "gpt-5", TokenId: 7, Quota: 100, PromptTokens: 10, CompletionTokens: 5, CreatedAt: 1500},
+		// token_id = 0（无关联密钥）的调用同样要计入模型维度
+		{UserId: 3, Username: "admin", Type: LogTypeConsume, ModelName: "gpt-5", TokenId: 0, Quota: 20, PromptTokens: 2, CompletionTokens: 1, CreatedAt: 1600},
+		{UserId: 3, Username: "admin", Type: LogTypeConsume, ModelName: "claude", TokenId: 7, Quota: 300, PromptTokens: 30, CompletionTokens: 10, CreatedAt: 1700},
+		// 非 consume 类型：排除
+		{UserId: 3, Username: "admin", Type: LogTypeLogin, ModelName: "gpt-5", Quota: 999, CreatedAt: 1650},
+		// 窗口外：排除
+		{UserId: 3, Username: "admin", Type: LogTypeConsume, ModelName: "gpt-5", Quota: 888, CreatedAt: 2500},
+		// 其他用户：排除
+		{UserId: 8, Username: "alice", Type: LogTypeConsume, ModelName: "gpt-5", Quota: 777, CreatedAt: 1500},
+	}).Error)
+
+	rows, err := GetUserModelUsageStat(3, start, end)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	// 按 quota DESC 排序
+	require.Equal(t, "claude", rows[0].ModelName)
+	require.Equal(t, int64(1), rows[0].RequestCount)
+	require.Equal(t, int64(300), rows[0].Quota)
+	require.Equal(t, int64(40), rows[0].TokenUsed)
+
+	require.Equal(t, "gpt-5", rows[1].ModelName)
+	require.Equal(t, int64(2), rows[1].RequestCount)
+	require.Equal(t, int64(120), rows[1].Quota)
+	require.Equal(t, int64(18), rows[1].TokenUsed)
+}
+
 func TestGetConsumeLogSparklineBucketsRequests(t *testing.T) {
 	setupConsumeStatTestDB(t)
 

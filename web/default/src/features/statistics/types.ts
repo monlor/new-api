@@ -27,7 +27,7 @@ export interface StatisticsTimeRange {
 }
 
 /** Period presets offered by the period selector. */
-export type StatisticsPeriodId = 'today' | '7d' | '30d' | 'custom'
+export type StatisticsPeriodId = 'today' | 'yesterday' | '7d' | '30d' | 'custom'
 
 // ============================================================================
 // User usage — GET /api/statistics/users
@@ -77,7 +77,7 @@ export interface UserUsageResponse {
 }
 
 // ============================================================================
-// Token drill-down — GET /api/statistics/users/tokens
+// User detail dialog — GET /api/statistics/users/detail
 // ============================================================================
 
 export interface UserTokenUsageItem {
@@ -99,8 +99,33 @@ export interface UserTokenUsageItem {
   status?: number
 }
 
-export interface UserTokenUsageResponse {
-  items: UserTokenUsageItem[]
+export interface UserModelUsageItem {
+  model_name: string
+  request_count: number
+  quota: number
+  /** Estimated official USD value for this model, at its cheapest available
+   *  group × channel ratio (markup excluded). */
+  original_value_usd?: number | null
+  token_used: number
+  /** Share of this user's period quota, 0-100. */
+  percentage: number
+}
+
+export interface UserUsageDetailSummary {
+  count: number
+  quota: number
+  token_used: number
+  original_value_usd?: number | null
+}
+
+export interface UserUsageDetailResponse {
+  /**
+   * Period totals for this user, summed from `models`. Unlike `tokens` this
+   * includes calls with no associated API key, so it is the true total.
+   */
+  summary: UserUsageDetailSummary
+  tokens: UserTokenUsageItem[]
+  models: UserModelUsageItem[]
 }
 
 // ============================================================================
@@ -137,12 +162,13 @@ export interface RevenueTopUser {
 }
 
 /**
- * A `top_ups` row as serialized by the backend. `amount` is intentionally
- * loose: TopUp.MarshalJSON emits a float for Epay orders.
+ * A recent successful order as serialized by the backend
+ * (`model.RevenueRecentTopUp`). `money` is already normalized to system USD.
  */
 export interface RevenueRecentTopUp {
   id: number
   user_id: number
+  username: string
   amount: number | string
   money: number
   trade_no: string

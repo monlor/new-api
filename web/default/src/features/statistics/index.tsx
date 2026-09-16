@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useMediaQuery } from '@/hooks'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SectionPageLayout } from '@/components/layout'
 import { RevenueTab } from './components/revenue-tab'
@@ -35,9 +36,10 @@ import {
 export function Statistics() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<StatisticsTabId>(STATISTICS_DEFAULT_TAB)
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   return (
-    <SectionPageLayout fixedContent={tab === 'usage'}>
+    <SectionPageLayout fixedContent={tab === 'usage' && !isMobile}>
       <SectionPageLayout.Title>{t('Statistics')}</SectionPageLayout.Title>
 
       <SectionPageLayout.Actions>

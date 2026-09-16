@@ -326,7 +326,7 @@ func SetApiRouter(router *gin.Engine) {
 		statisticsRoute.Use(middleware.AdminAuth())
 		{
 			statisticsRoute.GET("/users", controller.GetUserStatistics)
-			statisticsRoute.GET("/users/tokens", controller.GetUserTokenStatistics)
+			statisticsRoute.GET("/users/detail", controller.GetUserUsageDetail)
 			statisticsRoute.GET("/revenue", controller.GetRevenueStatistics)
 		}
 

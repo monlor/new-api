@@ -59,11 +59,13 @@ import {
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
 import { updateUserSubscription } from '../api'
+import { useModelOptions } from '../lib'
 import {
   userSubscriptionEditSchema,
   type UserSubscription,
   type UserSubscriptionEditForm as FormValues,
 } from '../types'
+import { PlanModelsField } from './plan-models-field'
 
 interface Props {
   subscription: UserSubscription
@@ -90,6 +92,8 @@ function toFormValues(sub: UserSubscription): FormValues {
     amount_total: Math.round(quotaUnitsToDollars(totalUnits) * 100) / 100,
     end_time: Number(sub.end_time || 0),
     status,
+    allowed_models: sub.allowed_models || '',
+    custom_name: sub.custom_name || '',
   }
 }
 
@@ -101,6 +105,7 @@ export function UserSubscriptionEditForm({
 }: Props) {
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const modelOptions = useModelOptions()
 
   const form = useForm<FormValues>({
     resolver: zodResolver(
@@ -158,6 +163,8 @@ export function UserSubscriptionEditForm({
         amount_total?: number
         end_time?: number
         status?: string
+        allowed_models?: string
+        custom_name?: string
       } = {}
 
       if (totalDirty) {
@@ -174,6 +181,12 @@ export function UserSubscriptionEditForm({
       }
       if (dirtyFields.status) {
         payload.status = values.status
+      }
+      if (dirtyFields.allowed_models) {
+        payload.allowed_models = values.allowed_models || ''
+      }
+      if (dirtyFields.custom_name) {
+        payload.custom_name = values.custom_name || ''
       }
 
       if (Object.keys(payload).length === 0) {
@@ -219,6 +232,31 @@ export function UserSubscriptionEditForm({
             onSubmit={form.handleSubmit(onSubmit)}
             className={sideDrawerFormClassName()}
           >
+            {/* Plan-backed subscriptions display their plan's title, so the
+                custom name is only editable for admin/custom assignments. */}
+            {subscription.plan_id <= 0 ? (
+              <FormField
+                control={form.control}
+                name='custom_name'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Subscription Name')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Custom assignment')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Leave empty to use the default name')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+
             <FormField
               control={form.control}
               name='amount_total'
@@ -328,6 +366,17 @@ export function UserSubscriptionEditForm({
                   <FormMessage />
                 </FormItem>
               )}
+            />
+
+            <PlanModelsField
+              control={form.control}
+              name='allowed_models'
+              modelOptions={modelOptions}
+              label={t('Allowed Models')}
+              description={t(
+                'Only these models can be paid for by this subscription. Leave empty for no restriction. Requests for other models fall back to the wallet.'
+              )}
+              placeholder={t('Leave empty for no restriction')}
             />
           </form>
         </Form>

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -95,7 +96,21 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	return RequestOpenAI2ClaudeMessage(c, *request)
+	if info != nil && info.ReasoningEffort == "" {
+		modelName := request.Model
+		if info.OriginModelName != "" {
+			modelName = info.OriginModelName
+		} else if info.UpstreamModelName != "" {
+			modelName = info.UpstreamModelName
+		}
+		info.ReasoningEffort = reasoning.EffortFromOpenAIChat(modelName, request.ReasoningEffort, request.Reasoning)
+	}
+	converted, err := RequestOpenAI2ClaudeMessage(c, *request)
+	if err != nil {
+		return nil, err
+	}
+	ApplyThinkingToRelayInfo(info, converted)
+	return converted, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {

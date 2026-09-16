@@ -36,12 +36,13 @@ export const STATISTICS_PERIOD_OPTIONS: {
   labelKey: string
 }[] = [
   { id: 'today', labelKey: 'Today' },
+  { id: 'yesterday', labelKey: 'Yesterday' },
   { id: '7d', labelKey: 'Last 7 days' },
   { id: '30d', labelKey: 'Last 30 days' },
   { id: 'custom', labelKey: 'Custom' },
 ]
 
-export const STATISTICS_DEFAULT_PERIOD: StatisticsPeriodId = '7d'
+export const STATISTICS_DEFAULT_PERIOD: StatisticsPeriodId = 'today'
 
 /** Number of sparkline buckets rendered in the user table trend column. */
 export const USER_TREND_SPARKLINE_BUCKETS = 12
@@ -58,6 +59,20 @@ export const REVENUE_PROVIDER_OPTIONS: { value: string; labelKey: string }[] = [
   { value: 'waffo_pancake', labelKey: 'Waffo Pancake' },
   { value: 'epay', labelKey: 'EPay' },
 ]
+
+/**
+ * Translation key for a payment provider slug, so the chart and the order
+ * table label providers identically. Returns null for unknown/empty slugs so
+ * callers can pick their own fallback.
+ */
+export function revenueProviderLabelKey(provider?: string): string | null {
+  if (!provider) return null
+  return (
+    REVENUE_PROVIDER_OPTIONS.find(
+      (option) => option.value !== 'all' && option.value === provider
+    )?.labelKey ?? null
+  )
+}
 
 /** Stable chart colours, aligned with the theme chart palette. */
 export const REVENUE_PROVIDER_COLORS: Record<string, string> = {

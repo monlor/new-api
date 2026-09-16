@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/QuantumNous/new-api/relay/constant"
@@ -87,6 +88,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 		info.ReasoningEffort = request.ReasoningEffort
 		info.UpstreamModelName = request.Model
+	}
+	if info != nil && info.ReasoningEffort == "" {
+		info.ReasoningEffort = reasoning.EffortFromModelName(info.OriginModelName)
+		if info.ReasoningEffort == "" {
+			info.ReasoningEffort = reasoning.EffortFromModelName(request.Model)
+		}
 	}
 	return request, nil
 }

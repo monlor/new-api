@@ -204,13 +204,39 @@ function StatCardDetails(props: { details: StatCardDetail[] }) {
   )
 }
 
+function renderStatCardExtra(props: {
+  details: StatCardDetail[] | undefined
+  sparkline: number[] | undefined
+  sparklineVariant: StatCardSparklineVariant
+  tone: StatCardTone
+  hasDetails: boolean
+  hasSparkline: boolean
+}) {
+  if (props.hasDetails) {
+    return <StatCardDetails details={props.details ?? []} />
+  }
+  if (!props.hasSparkline) return null
+  if (props.sparklineVariant === 'line') {
+    return <LineSparkline values={props.sparkline} tone={props.tone} />
+  }
+  return <BarSparkline values={props.sparkline} tone={props.tone} />
+}
+
 export function StatCard(props: StatCardProps) {
   const Icon = props.icon
   const tone = props.tone ?? 'gray'
   const sparklineVariant = props.sparklineVariant ?? 'bars'
 
+  const hasDetails = Boolean(props.details?.length)
+  const hasSparkline = Boolean(props.sparkline?.length)
+
   return (
-    <div className='group flex min-h-32 flex-col justify-between gap-3'>
+    <div
+      className={cn(
+        'group flex flex-col justify-between gap-3',
+        (hasDetails || hasSparkline) && 'min-h-32'
+      )}
+    >
       <div className='flex items-start justify-between gap-1'>
         <div className='text-muted-foreground flex items-center gap-1.5 text-xs font-medium sm:gap-2'>
           <Icon
@@ -225,14 +251,14 @@ export function StatCard(props: StatCardProps) {
       {props.loading ? (
         <div className='flex flex-col gap-1.5'>
           <Skeleton className='h-7 w-24' />
-          <Skeleton className='h-3.5 w-32' />
+          <Skeleton className='hidden h-3.5 w-32 sm:block' />
         </div>
       ) : props.error ? (
         <div className='flex flex-col gap-1'>
           <div className='text-muted-foreground mt-0.5 font-mono text-base font-bold tracking-tight break-all tabular-nums sm:text-2xl'>
             --
           </div>
-          <p className='text-muted-foreground/60 text-xs'>
+          <p className='text-muted-foreground/60 hidden text-xs sm:block'>
             {props.description}
           </p>
         </div>
@@ -241,19 +267,20 @@ export function StatCard(props: StatCardProps) {
           <div className='text-foreground font-mono text-2xl font-semibold tracking-tight break-all tabular-nums'>
             {props.value}
           </div>
-          <p className='text-muted-foreground/60 text-xs leading-relaxed'>
+          <p className='text-muted-foreground/60 hidden text-xs leading-relaxed sm:block'>
             {props.description}
           </p>
         </div>
       )}
 
-      {props.details?.length ? (
-        <StatCardDetails details={props.details} />
-      ) : sparklineVariant === 'line' ? (
-        <LineSparkline values={props.sparkline} tone={tone} />
-      ) : (
-        <BarSparkline values={props.sparkline} tone={tone} />
-      )}
+      {renderStatCardExtra({
+        details: props.details,
+        sparkline: props.sparkline,
+        sparklineVariant,
+        tone,
+        hasDetails,
+        hasSparkline,
+      })}
     </div>
   )
 }

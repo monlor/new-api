@@ -116,6 +116,7 @@ export type DataTablePageProps<TData> = {
   mobileProps?: {
     getRowKey?: (row: Row<TData>) => string | number
     getRowClassName?: (row: Row<TData>) => string | undefined
+    onRowClick?: (row: Row<TData>) => void
   }
 
   /**
@@ -315,6 +316,7 @@ function renderMobile<TData>(
       emptyDescription={props.emptyDescription}
       getRowKey={props.mobileProps?.getRowKey}
       getRowClassName={mobileGetRowClassName}
+      onRowClick={props.mobileProps?.onRowClick}
     />
   )
 

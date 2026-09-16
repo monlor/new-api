@@ -121,6 +121,8 @@ export async function updateUserSubscription(
     amount_total?: number
     end_time?: number
     status?: string
+    allowed_models?: string
+    custom_name?: string
   }
 ): Promise<ApiResponse<UserSubscription>> {
   const res = await api.put(

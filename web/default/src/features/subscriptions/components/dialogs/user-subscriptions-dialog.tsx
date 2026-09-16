@@ -55,13 +55,14 @@ import {
   invalidateUserSubscription,
   deleteUserSubscription,
 } from '../../api'
-import { formatTimestamp, planHasReset } from '../../lib'
+import { formatTimestamp, planHasReset, parseDisplayModels } from '../../lib'
 import type {
   PlanRecord,
   SubscriptionPlan,
   UserSubscription,
   UserSubscriptionRecord,
 } from '../../types'
+import { CustomSubscriptionAssignForm } from '../custom-subscription-assign-form'
 import { UserSubscriptionEditForm } from '../user-subscription-edit-form'
 
 interface Props {
@@ -132,6 +133,32 @@ export function UserSubscriptionsDialog(props: Props) {
     })
     return map
   }, [plans])
+
+  /**
+   * Display-only ordering that mirrors the backend's billing candidate order
+   * (admin-source first, then soonest end_time) so the admin sees rows in the
+   * sequence they will actually be consumed. This is an independent
+   * client-side reimplementation — it must never be used for billing.
+   */
+  const sortedSubs = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
+    const now = Date.now() / 1000
+    const isValid = (s: UserSubscription) =>
+      s.status === 'active' && s.end_time > now
+    return [...subs].sort((a, b) => {
+      const av = isValid(a.subscription)
+      const bv = isValid(b.subscription)
+      if (av !== bv) return av ? -1 : 1
+      if (av) {
+        const aAdmin = a.subscription.source === 'admin'
+        const bAdmin = b.subscription.source === 'admin'
+        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1
+        return a.subscription.end_time - b.subscription.end_time
+      }
+      // Invalid bucket: most recently expired first (not billing-relevant).
+      return b.subscription.end_time - a.subscription.end_time
+    })
+  }, [subs])
 
   const loadData = useCallback(async () => {
     if (!props.user?.id) return
@@ -256,8 +283,19 @@ export function UserSubscriptionsDialog(props: Props) {
               </Button>
             </div>
 
+            {props.user?.id ? (
+              <CustomSubscriptionAssignForm
+                userId={props.user.id}
+                onSuccess={async () => {
+                  await loadData()
+                  props.onSuccess?.()
+                }}
+              />
+            ) : null}
+
             <StaticDataTable
-              data={loading ? [] : subs}
+              className='shrink-0'
+              data={loading ? [] : sortedSubs}
               getRowKey={(record) => record.subscription.id}
               emptyClassName={loading ? 'py-8' : 'text-muted-foreground py-8'}
               emptyContent={
@@ -274,15 +312,25 @@ export function UserSubscriptionsDialog(props: Props) {
                   header: t('Plan'),
                   cell: (record) => {
                     const sub = record.subscription
+                    const allowedModels = parseDisplayModels(
+                      sub.allowed_models || ''
+                    )
 
                     return (
                       <div>
                         <div className='font-medium'>
-                          {planTitleMap.get(sub.plan_id) || `#${sub.plan_id}`}
+                          {sub.plan_id > 0
+                            ? planTitleMap.get(sub.plan_id) || `#${sub.plan_id}`
+                            : sub.custom_name || t('Custom assignment')}
                         </div>
                         <div className='text-muted-foreground text-sm'>
                           {t('Source')}: {sub.source || '-'}
                         </div>
+                        {allowedModels.length > 0 ? (
+                          <div className='text-muted-foreground mt-1 text-xs'>
+                            {t('Allowed Models')}: {allowedModels.length}
+                          </div>
+                        ) : null}
                       </div>
                     )
                   },
@@ -331,9 +379,15 @@ export function UserSubscriptionsDialog(props: Props) {
 
                     if (total === 0) {
                       return (
-                        <span className='text-muted-foreground text-sm'>
-                          {t('Unlimited')}
-                        </span>
+                        <div className='w-[160px] space-y-1'>
+                          <div className='text-muted-foreground text-xs'>
+                            {hasReset ? t('Period Quota') : t('Total Quota')}
+                          </div>
+                          <span className='text-sm'>{t('Unlimited')}</span>
+                          <div className='text-muted-foreground text-xs'>
+                            {t('Used')}: {formatQuota(used)}
+                          </div>
+                        </div>
                       )
                     }
 

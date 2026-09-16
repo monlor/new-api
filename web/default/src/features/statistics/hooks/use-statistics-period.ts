@@ -36,9 +36,9 @@ function toUnix(date: Date): number {
 /**
  * Resolve a preset id into a concrete Unix-second window.
  *
- * `today` is the calendar day, `7d` / `30d` are inclusive day windows ending
- * today — matching the presets already used by the usage-logs range picker so
- * numbers line up between the two pages.
+ * `today` and `yesterday` are single calendar days; `7d` / `30d` are inclusive
+ * day windows ending today — matching the presets already used by the
+ * usage-logs range picker so numbers line up between the two pages.
  */
 export function resolvePeriodRange(
   id: StatisticsPeriodId,
@@ -51,6 +51,14 @@ export function resolvePeriodRange(
     const start = customStart ?? now.subtract(6, 'day').startOf('day').toDate()
     const end = customEnd ?? now.endOf('day').toDate()
     return { start_timestamp: toUnix(start), end_timestamp: toUnix(end) }
+  }
+
+  if (id === 'yesterday') {
+    const yesterday = now.subtract(1, 'day')
+    return {
+      start_timestamp: toUnix(yesterday.startOf('day').toDate()),
+      end_timestamp: toUnix(yesterday.endOf('day').toDate()),
+    }
   }
 
   const days = id === 'today' ? 0 : id === '7d' ? 6 : 29

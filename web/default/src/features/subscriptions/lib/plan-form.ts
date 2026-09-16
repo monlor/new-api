@@ -48,6 +48,7 @@ export function getPlanFormSchema(t: TFunction) {
     waffo_pancake_product_id: z.string().optional(),
     is_recommended: z.boolean(),
     display_models: z.string().optional(),
+    allowed_models: z.string().optional(),
   })
 }
 
@@ -73,6 +74,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   waffo_pancake_product_id: '',
   is_recommended: false,
   display_models: '',
+  allowed_models: '',
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -96,6 +98,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
     is_recommended: plan.is_recommended === true,
     display_models: plan.display_models || '',
+    allowed_models: plan.allowed_models || '',
   }
 }
 
@@ -116,6 +119,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
       upgrade_group: values.upgrade_group || '',
+      allowed_models: values.allowed_models || '',
     },
   }
 }

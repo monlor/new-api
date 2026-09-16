@@ -45,6 +45,11 @@ export const subscriptionPlanSchema = z.object({
   is_recommended: z.boolean().optional(),
   /** Comma-separated model IDs shown as "hot models" on the purchase card. */
   display_models: z.string().optional(),
+  /**
+   * Comma-separated model IDs this plan may pay for (empty = no restriction).
+   * Snapshotted onto each UserSubscription at creation.
+   */
+  allowed_models: z.string().optional(),
 })
 
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
@@ -68,6 +73,16 @@ export const userSubscriptionSchema = z.object({
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
+  /**
+   * Comma-separated model IDs this subscription may pay for (empty = no
+   * restriction). Snapshotted from the plan, editable per subscription.
+   */
+  allowed_models: z.string().optional(),
+  /**
+   * Admin-chosen display name. Only meaningful when plan_id <= 0 (custom
+   * assignment); empty string falls back to t('Custom assignment').
+   */
+  custom_name: z.string().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
@@ -95,6 +110,8 @@ export const userSubscriptionEditSchema = z
     amount_total: z.number().min(0),
     end_time: z.number(),
     status: z.enum(['active', 'expired', 'cancelled']),
+    allowed_models: z.string().optional(),
+    custom_name: z.string().optional(),
   })
   .refine((data) => data.status !== 'active' || data.end_time > 0, {
     message: 'Active subscriptions require an end time',
@@ -163,6 +180,15 @@ export interface StripePortalResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+  /** The fields below apply only when plan_id <= 0 (custom assignment). */
+  duration_unit?: 'year' | 'month' | 'day' | 'hour' | 'custom'
+  duration_value?: number
+  custom_seconds?: number
+  allowed_models?: string
+  /** Display name for the custom assignment; empty = generic fallback label. */
+  custom_name?: string
+  /** Raw quota units (converted from the display-currency input on submit). */
+  total_amount?: number
 }
 
 // ============================================================================

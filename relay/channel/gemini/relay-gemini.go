@@ -197,8 +197,51 @@ func ThinkingAdaptor(geminiRequest *dto.GeminiChatRequest, info *relaycommon.Rel
 	}
 }
 
+// ApplyThinkingToRelayInfo copies Gemini thinking level/budget onto RelayInfo for usage logs.
+func ApplyThinkingToRelayInfo(info *relaycommon.RelayInfo, req *dto.GeminiChatRequest) {
+	if info == nil || req == nil {
+		return
+	}
+	cfg := req.GenerationConfig.ThinkingConfig
+	if cfg != nil {
+		if cfg.ThinkingBudget != nil {
+			info.ThinkingBudget = cfg.ThinkingBudget
+		}
+		if cfg.ThinkingLevel != "" {
+			info.ReasoningEffort = cfg.ThinkingLevel
+		} else if info.ReasoningEffort == "" {
+			if cfg.ThinkingBudget != nil && *cfg.ThinkingBudget == 0 {
+				info.ReasoningEffort = "none"
+			} else if (cfg.ThinkingBudget != nil && *cfg.ThinkingBudget > 0) || cfg.IncludeThoughts {
+				info.ReasoningEffort = "thinking"
+			}
+		}
+	}
+	if info.ReasoningEffort == "" {
+		info.ReasoningEffort = reasoning.EffortFromModelName(info.OriginModelName)
+		if info.ReasoningEffort == "" {
+			info.ReasoningEffort = reasoning.EffortFromModelName(info.UpstreamModelName)
+		}
+	}
+	if info.ThinkingBudget == nil {
+		info.ThinkingBudget = reasoning.ThinkingBudgetFromModelName(info.OriginModelName)
+		if info.ThinkingBudget == nil {
+			info.ThinkingBudget = reasoning.ThinkingBudgetFromModelName(info.UpstreamModelName)
+		}
+	}
+}
+
 // Setting safety to the lowest possible values since Gemini is already powerless enough
 func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, info *relaycommon.RelayInfo) (*dto.GeminiChatRequest, error) {
+	if info != nil && info.ReasoningEffort == "" {
+		modelName := textRequest.Model
+		if info.OriginModelName != "" {
+			modelName = info.OriginModelName
+		} else if info.UpstreamModelName != "" {
+			modelName = info.UpstreamModelName
+		}
+		info.ReasoningEffort = reasoning.EffortFromOpenAIChat(modelName, textRequest.ReasoningEffort, textRequest.Reasoning)
+	}
 
 	geminiRequest := dto.GeminiChatRequest{
 		Contents: make([]dto.GeminiChatContent, 0, len(textRequest.Messages)),
@@ -355,6 +398,7 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 	if !adaptorWithExtraBody {
 		ThinkingAdaptor(&geminiRequest, info, textRequest)
 	}
+	ApplyThinkingToRelayInfo(info, &geminiRequest)
 
 	safetySettings := make([]dto.GeminiChatSafetySettings, 0, len(SafetySettingList))
 	for _, category := range SafetySettingList {

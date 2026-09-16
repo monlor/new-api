@@ -54,14 +54,25 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 移除钱包页计费优先级选择与 `/api/subscription/self/preference`
 - Stripe 设置页增加生产上线清单：Webhook URL/签名密钥与完整事件集、Customer Portal 功能边界、recurring Price 周期一致性、test/live 模式隔离，以及仅新购且已有 Stripe 映射的订阅可进入 Portal
 - 管理员直接编辑单条用户订阅 (`PUT /api/subscription/admin/user_subscriptions/:id`)：可改 `amount_used` / `amount_total` / `end_time` / `status`，事务内 `FOR UPDATE` 加锁、校验 `amount_used <= amount_total`，写入审计日志 `user_subscription.admin_edit`；订阅不再有效（`status != active` 或 `end_time` 已到期）时在同一事务内触发分组回退并刷新用户分组缓存；`status=cancelled` 仅在**转入** cancelled 时把 `end_time` 打成 now（已是 cancelled 再保存保留历史取消时间，除非请求显式带了新的 `end_time`）；重新激活（`status=active` 且 `end_time > now`）时把用户分组恢复为 `UpgradeGroup` 并刷新缓存，不改写订阅行上的 `PrevUserGroup`；`active` 且 `end_time<=0` 拒绝写入
-- 钱包页为充值表单与「我的订阅」卡片并排；无订阅时充值表单占满整行。购买套餐在独立的订阅套餐页，横向卡片布局；套餐新增管理员可配置的 `IsRecommended`（推荐角标，替换原先「第一个套餐即推荐」的写死逻辑）与 `DisplayModels`（挑选系统内已有模型，逗号分隔存储，`GetDisplayModels()` 复用 `Channel.GetModels()` 的解析方式），无限额套餐显示「无限制」
+- 钱包页为充值表单与「我的订阅」卡片并排；无订阅时充值表单占满整行。购买套餐在独立的订阅套餐页，横向卡片布局；套餐新增管理员可配置的 `IsRecommended`（推荐角标，替换原先「第一个套餐即推荐」的写死逻辑）与 `DisplayModels`（挑选系统内已有模型，逗号分隔存储，`GetDisplayModels()` 复用 `Channel.GetModels()` 的解析方式），无限额套餐显示「无限制」。移动端不再用 `absolute inset-0` 把订阅列表高度压成 0，订阅内容随页面滚动；桌面 `lg+` 仍并排等高、卡片内滚动
 - 套餐卡片「预计可调用次数 / 系列原始价值」估算统一口径（`subscriptions/lib/model-value.ts` 为单一真源，`getEffectiveModelPricing()` 一次解析出 `modelRatio` / `completionRatio` / `effectiveRatio` 供全部估算共用）：
   - 支持 `billing_mode: 'tiered_expr'` 分档计费模型：取表达式首档 `p`/`c` 系数（真实 $/1M 价）换算回等效倍率，不再误读已失效的 `model_ratio`
   - 全部估算都乘上「最优分组 × 渠道倍率」（`group_channel_ratio_min_subscription` 优先，回退 `group_channel_ratio_min`），与模型广场主表展示价口径一致；此前仅「系列原始价值」计入、「预计可调用次数」按 ratio=1 计算
   - 真实可用额度公式修正为 `额度/quotaPerUnit/effectiveRatio`——`modelRatio` 在推导中会完全约掉，原先额外再除一次属重复计价
   - 有周期重置的套餐按整个订阅期的估算总额度（`calcEstimatedTotal`）计算，与卡片上已展示的「总额度: ≈」一致，此前只按单个周期额度算
+- 管理员给用户分配订阅包（有效期 + 限制模型 + 额度，优先级最高），实现上刻意收敛在 `model/subscription.go` 内部，不动 `FundingSource` 接口与 `BillingSession` 签名：
+  - `SubscriptionPlan` / `UserSubscription` 新增 `AllowedModels`（逗号分隔，复用 `SplitDisplayModels` / `DisplayModelsWellFormed`）。套餐下发时快照到用户订阅，可单条编辑覆盖；force-sync 会按套餐强制回写
+  - `SubscriptionAllowsModel(allowedModels, modelName)`：空白名单或空 modelName 一律放行；否则白名单需命中 `modelName` 或 `ratio_setting.FormatMatchingModelName(modelName)`（与 token 模型限制同口径）。模型不在白名单 = **跳过该订阅**，由既有的 `trySubscription → trySplit → tryWallet` 回落链接手，不做 403 硬拒
+  - 优先级：`source='admin'` 的订阅永远先于 `source='order'` 扣费。**不新增 priority 列**；`preConsumeUserSubscription` 与 `GetSoonestSubscriptionLeftoverForModel` 用 Go 端 `sort.SliceStable` 把 admin 提前（Rule 2：禁止 `ORDER BY CASE` / `FIELD()`，SQL 侧仍是 `end_time asc, id asc`），两处排序必须一致，否则 `trySplit` 算出的 `walletNeed` 与实际扣费订阅对不上
+  - `AdminAssignCustomSubscription()`：无套餐的自定义分配（`PlanId = 0`、`Source = admin`、`NextResetTime = 0`），用临时 `SubscriptionPlan` 复用 `calcPlanEndTime` 算有效期。`preConsumeUserSubscription` **仅在 `PlanId <= 0` 时**跳过套餐查询并跳过周期重置；`PlanId > 0` 查套餐失败仍 `return err`，避免套餐被删 / DB 抖动时静默跳过到期重置仍扣费
+  - 五个只读辅助函数（`GetActiveSubscriptionRemaining` / `CanFullyCoverSubscriptionNeed` / `GetSoonestSubscriptionLeftover` / `HasUsableSubscriptionQuota` / `loadActiveUserSubscriptions`）新增 `*ForModel` 变体，旧签名保留为 `""` 薄包装（零破坏，既有测试与无模型上下文的调用方不用改）
+  - 调用方接入模型名仅 3 处：`service/billing_session.go`（4 个调用点传 `relayInfo.OriginModelName`）、`service/channel_select.go`（读 `constant.ContextKeyOriginalModel`，取不到即 `""` 安全降级）、`middleware/distributor.go`（`getModelRequest` 成功后提前写入该 context key，`SetupContextForSelectedChannel` 后面用同值再设一次，无语义变化）
+  - 复用 `POST /users/:id/subscriptions`，`plan_id <= 0` 走自定义分配分支；`AdminUpdateUserSubscription` 增加 `allowedModels *string`（nil-gated）并纳入审计字段。SQLite 需在 `ensureSubscriptionPlanTableSQLite()` 的 CREATE DDL 与 `required` 列表两处加 `allowed_models`，MySQL/PG 走 AutoMigrate
+  - 前端：`plan-display-models-field.tsx` 泛化为 `plan-models-field.tsx`（`<T extends FieldValues>` + `name` prop），套餐表单 / 自定义分配表单 / 单条订阅编辑共用；`useModelOptions` 抽到 `lib/use-model-options.ts`（避免 `react-refresh/only-export-components`）；新增 `custom-subscription-assign-form.tsx`（Collapsible 折叠面板）；额度输入沿用 `parseQuotaFromDollars` + `getCurrencyLabel()`（Rule 11）
+- 管理员分配的订阅（`plan_id <= 0`）支持自定义名称：`UserSubscription` 新增 `CustomName`（`json:"custom_name"`、`varchar(128)`，纯 GORM AutoMigrate 覆盖三库，无需手写 DDL），`AdminAssignCustomSubscription()` 增加尾参 `customName string`（`strings.TrimSpace` 后落库），`AdminUpdateUserSubscription()` 增加 nil-gated 的 `customName *string`（与 `allowedModels` 同模式）并纳入审计字段；controller 两个请求体分别新增 `custom_name` / `*custom_name` 并做 128 字符（rune）上限校验；管理端弹窗与钱包「我的订阅」在 `plan_id <= 0` 时均以 `custom_name || t('Custom assignment')` 展示
+- 管理员订阅 UI 补齐自定义名称与展示排序：自定义分配表单新增「订阅名称」输入（留空回落默认名），单条订阅编辑抽屉仅在 `plan_id <= 0` 时渲染该字段（套餐订阅沿用套餐标题），提交走与 `allowed_models` 一致的 dirty-gate 增量写入；`user-subscriptions-dialog.tsx` 在渲染前用 `useMemo` 做纯展示排序——有效（`status==='active' && end_time > now`）在前、其中 `source==='admin'` 优先再按 `end_time` 升序，无效的按 `end_time` 倒序垫底，与后端扣费候选顺序一致但完全独立实现，不触碰 `model/subscription.go` 的 `sortSubscriptionsByPriority`
 
-**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/subscriptions/lib/model-value.ts`、`web/default/src/features/subscriptions/components/subscriptions-mutate-drawer.tsx`、`web/default/src/features/wallet/`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `controller/subscription.go`、`controller/subscription_payment_epay.go`、`controller/subscription_payment_stripe.go`、`controller/subscription_payment_waffo_pancake.go`、`controller/topup_stripe.go`、`model/subscription.go`、`model/subscription_allowed_models_test.go`、`model/provider_subscription.go`、`model/main.go`、`router/api-router.go`、`service/billing_session.go`、`service/channel_select.go`、`middleware/distributor.go`、`dto/user_settings.go`、`common/str.go`、`web/default/src/features/subscriptions/`、`web/default/src/features/subscriptions/lib/model-value.ts`、`web/default/src/features/subscriptions/components/subscriptions-mutate-drawer.tsx`、`web/default/src/features/wallet/`、`web/classic/src/components/topup/`、`web/default/src/features/system-settings/integrations/payment-settings-section.tsx`、`web/default/src/i18n/locales/*.json`
 
 ## 三、支付货币 / 钱包货币显示 (Payment Currency)
 
@@ -138,8 +149,9 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 - 新增 **zh-TW** locale
 - 同步 en/zh/fr/ru/ja/vi 翻译：计费、主题、订阅、邀请阈值、批量用户、倍率徽章、可用性过滤、配额阈值等新功能
+- 补齐缺失 `t()` key（25 条）及仍为英文的界面文案：统计看板、用户批量操作、渠道批量测试、公告/通知、日文页脚；品牌名（CC Switch / Waffo Pancake）保持英文并加入 sync 跳过列表
 
-**涉及文件：** `web/default/src/i18n/locales/*.json`、`web/default/src/i18n/config.ts`、`web/default/src/i18n/languages.ts`
+**涉及文件：** `web/default/src/i18n/locales/*.json`、`web/default/src/i18n/config.ts`、`web/default/src/i18n/languages.ts`、`web/default/scripts/sync-i18n.mjs`
 
 ## 十、开发 / CI 基础设施 (Dev & CI)
 
@@ -205,12 +217,17 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 
 - 新增 admin-only 统计接口分组 `/api/statistics`（`middleware.AdminAuth()`），供新「统计」页面使用
   - `GET /api/statistics/users`：基于 **LOG_DB `logs`（`type=consume`）** 按 `user_id` 聚合的用户用量列表，与使用日志同一数据源（不再读最多延迟 `DataExportInterval` 分钟的 `quota_data`）。`MAX(username)` 展示名；`keyword` 至少 2 个字符才模糊匹配；`p`/`page_size` 分页、`quota DESC` 排序；附 KPI 汇总与等长上一周期环比，以及每行 12 点 sparkline（`trend`，一次聚合查询批量取，不按行发请求）
-  - `GET /api/statistics/users/tokens`：密钥粒度下钻。先在 **LOG_DB** 按 `token_id` 聚合（限定 `user_id` + `type=consume`），再到主库 `tokens` 用 `IN` 批量补 `name`/`status`，**不跨库 JOIN**；软删除的令牌返回 `status = -1`；响应绝不含 `Token.Key`
+  - `GET /api/statistics/users/detail`：单用户详情，一次请求返回 `summary` + `tokens`（密钥维度）+ `models`（模型维度）三段。密钥段先在 **LOG_DB** 按 `token_id` 聚合（限定 `user_id` + `type=consume`），再到主库 `tokens` 用 `IN` 批量补 `name`/`status`，**不跨库 JOIN**；软删除的令牌返回 `status = -1`；响应绝不含 `Token.Key`。模型段按 `model_name` 聚合且**不过滤 `token_id`**，因此 `summary` 才是该用户周期内的真实合计（含无关联密钥的调用），`models[].percentage` 为该模型 quota 占 `summary.quota` 的比例
   - `GET /api/statistics/revenue`：收入 KPI / 趋势 / 渠道占比 / Top 充值用户 / 最近充值记录。统一口径 `status='success' AND payment_provider <> 'balance' AND complete_time > 0`（余额抵扣不是真实收入，`complete_time=0` 为历史脏数据）。`money` 统一为系统 USD：Epay 的网关 CNY 按当前 `Price` 换算后再聚合
 - 分桶复用 `rankingBucketExpr(column, bucketSize)`（MySQL `FLOOR(col/N)*N`，SQLite/PostgreSQL `(col/N)*N`）；粒度按时间跨度自动选择（≤3 天用小时桶，否则天桶）
+- **订阅订单镜像 `top_ups` 时补齐 `payment_provider`**（`upsertSubscriptionTopUpTx`）：此前该字段留空，导致 Epay 订阅单的网关 CNY 金额不会按 `Price` 折回系统 USD（线上 300.3 的套餐被显示成 ¥2102.1），支付方式占比也只能显示「未知」，且空 provider 行会绕过 `payment_provider <> 'balance'` 的口径过滤。更新分支与既有 `PaymentMethod` 守卫对称：为空则补齐，两者非空且冲突返回 `ErrPaymentMethodMismatch`。同时新增一次性回填 `migrateTopUpPaymentProviderBackfill()`（挂在 `migrateDB()` 的 `AutoMigrate` 之后），按 `trade_no` 从 `subscription_orders` 补历史空 provider 行——分块 `IN` + 按 provider 聚合更新，不用 MySQL 专有的 `UPDATE ... JOIN`，`WHERE payment_provider = ''` 保证幂等
+- 两段汇率语义（两个独立的管理员配置项，代码里全部从 `operation_setting` 动态读取）：聚合侧用 **成交汇率** `Price` 把 Epay 的 CNY 归一成系统 USD，展示侧前端按 Rule 11 用 **展示汇率** `USDExchangeRate` 转回 CNY。默认两者相等（7.3）时精确抵消，页面金额与实付一致；若管理员把两者配成不等，统计页的 CNY 展示会按比例偏离实付（多币种聚合归一的固有代价）。钱包「计费历史」的「支付」列走 `formatNumber` 原样输出、不参与归一，不受影响
+- 「最近充值记录」返回用户名而非裸用户 ID：新增扁平 DTO `RevenueRecentTopUp`（不嵌入 `TopUp`，避免继承其为兼容 Epay 小数金额而写的自定义 `MarshalJSON`），用户名走抽出的 `usernamesByIds()` 批量 `IN` 查询、与 `GetTopRechargeUsers` 共用，**不跨表 JOIN**。前端订单表与渠道占比饼图共用 `revenueProviderLabelKey()`，把 provider slug 映射成已有 i18n 文案（易支付 / Stripe / …），未命中才回落「未知」
 - 「真实成本 / Real Cost」KPI 改名为「原始价值 / Original Value」（字段 `real_cost_usd` → `original_value_usd`）：旧名容易被误读成「用户实际花的钱」，且中文界面还按 Rule 11 转成人民币，进一步加深误解。公式同步换成与订阅购买页 `calculateModelUsdValue` 一致的 `quota / QuotaPerUnit / minEffectiveRatio`——`minEffectiveRatio` 取该模型所有已启用分组里 `group_ratio × channel_ratio_min` 的最小值（优先用 `group_channel_ratio_min_subscription`），数据源为 `model.GetPricing()` + `ratio_setting.GetGroupRatioCopy()`，不再依赖 `GetModelRatioOrPrice`。展示端始终显示原始 USD（Rule 11 的「官方原始值」例外场景）。`original_value_usd` 在模型拆分查询失败、或没有任何一行成功换算时省略（nil / omitempty），不把 0 当成已计算；至少一行换算成功才发数字（含 0），部分换算只累加成功行；summary / 每用户 / 每密钥同一规则
+- 移动端用量 Tab 关闭 `fixedContent`：KPI 不再把用户列表挤出视口；KPI 两列、无 sparkline 时去掉空图表占位，说明文字 `sm+` 才显示
+- 用户用量改为**点击整行弹出详情框**，取代原来的行内展开下钻：展开箭头列删除，弹框内上下堆叠「API 密钥」「模型」两张表并附 4 项周期汇总。原下钻只有密钥一个维度，且 `MobileCardList` 不渲染 `renderRow`，手机上完全看不到明细——为此给共享组件 `MobileCardList` / `DataTablePage` 加了向后兼容的可选 `onRowClick`（行 `role="button"` + Enter/Space 键盘可达），桌面 `DataTableRow` 同样挂 `role="button"` + Enter/Space，移动端卡片也可点开弹框
 
-**涉及文件：** `model/statistics_common.go`、`model/statistics_usedata.go`、`model/statistics_log.go`、`model/statistics_topup.go`、`controller/statistics_user.go`、`controller/statistics_revenue.go`、`router/api-router.go`、`web/default/src/features/statistics/**`、`web/default/src/routes/_authenticated/statistics/**`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/i18n/locales/*.json`
+**涉及文件：** `model/statistics_common.go`、`model/statistics_usedata.go`、`model/statistics_log.go`、`model/statistics_log_test.go`、`model/statistics_topup.go`、`model/statistics_topup_test.go`、`model/subscription.go`、`model/payment_method_guard_test.go`、`model/main.go`、`controller/statistics_user.go`、`controller/statistics_revenue.go`、`router/api-router.go`、`web/default/src/features/statistics/**`、`web/default/src/components/data-table/layout/**`、`web/default/src/routes/_authenticated/statistics/**`、`web/default/src/hooks/use-sidebar-data.ts`、`web/default/src/i18n/locales/*.json`
 
 ## 十五、安全加固 (Security)
 
@@ -228,3 +245,17 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - AGENTS.md 为项目规范单一来源，CLAUDE.md 软链接指向它
 - 移除 protected-info 规则，新增 Docker Compose 开发规则
 - 本文件 (FORK_CHANGES.md)
+
+## 十七、使用日志思考强度 (Usage log thinking intensity)
+
+使用日志 `logs.other` 更完整地持久化思考强度，供前端展示。不改表结构：
+
+- 继续写 `other.reasoning_effort`；新增 `other.thinking_budget`（Gemini/Claude budget tokens）
+- 在 adaptor 转换**之前**从请求字段 / 模型后缀提取（避免 OpenRouter 清空 `reasoning_effort`、Claude/Gemini 只改请求不写 RelayInfo）
+- Claude Opus `-thinking` 记 `high`；Gemini `extra_body.google.thinking_config` 的 level/budget 写入 RelayInfo
+
+**涉及文件（后端）：** `relay/common/relay_info.go`、`setting/reasoning/effort.go`、`service/log_info_generate.go`、`relay/compatible_handler.go`、`relay/responses_handler.go`、`relay/claude_handler.go`、`relay/gemini_handler.go`、`relay/channel/openai/adaptor.go`、`relay/channel/claude/adaptor.go`、`relay/channel/claude/thinking_info.go`、`relay/channel/gemini/relay-gemini.go`、`relay/channel/xai/adaptor.go`、`relay/channel/deepseek/adaptor.go`
+
+模型列在思考强度徽章旁仍走 `formatModelName` + `ModelBadge.actualModel`，映射模型的「请求名 ≠ 上游名」标识不丢。
+
+**涉及文件（前端）：** `web/default/src/features/usage-logs/types.ts`、`web/default/src/features/usage-logs/lib/reasoning-effort.ts`、`web/default/src/features/usage-logs/components/reasoning-effort-badge.tsx`、`web/default/src/features/usage-logs/components/columns/common-logs-columns.tsx`、`web/default/src/features/usage-logs/components/dialogs/details-dialog.tsx`、`web/classic/src/hooks/usage-logs/useUsageLogsData.jsx`、`web/default/src/i18n/locales/*.json`、`web/classic/src/i18n/locales/*.json`

@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -45,7 +46,11 @@ import {
   getSelfSubscriptionFull,
   createStripePortalSession,
 } from '@/features/subscriptions/api'
-import { planHasReset, calcEstimatedTotal } from '@/features/subscriptions/lib'
+import {
+  planHasReset,
+  calcEstimatedTotal,
+  parseDisplayModels,
+} from '@/features/subscriptions/lib'
 import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
 
 /** Subscriptions whose end time is older than this window are hidden by default. */
@@ -191,14 +196,25 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
     return Math.round((used / total) * 100)
   }
 
-  const sortedSubscriptions = useMemo(
-    () =>
-      [...allSubscriptions].sort(
-        (a, b) =>
-          (b.subscription?.end_time || 0) - (a.subscription?.end_time || 0)
-      ),
-    [allSubscriptions]
-  )
+  const sortedSubscriptions = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity
+    const now = Date.now() / 1000
+    const isValid = (s: UserSubscriptionRecord['subscription']) =>
+      s?.status === 'active' && (s?.end_time || 0) > now
+    return [...allSubscriptions].sort((a, b) => {
+      const av = isValid(a.subscription)
+      const bv = isValid(b.subscription)
+      if (av !== bv) return av ? -1 : 1
+      if (av) {
+        const aAdmin = a.subscription?.source === 'admin'
+        const bAdmin = b.subscription?.source === 'admin'
+        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1
+        return (a.subscription?.end_time || 0) - (b.subscription?.end_time || 0)
+      }
+      // Invalid bucket: most recently expired first (not billing-relevant).
+      return (b.subscription?.end_time || 0) - (a.subscription?.end_time || 0)
+    })
+  }, [allSubscriptions])
 
   // Default view: only subscriptions that ended within the last 90 days, plus
   // anything still active (never hide a live subscription).
@@ -223,7 +239,7 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
     return (
       <Card
         data-card-hover='false'
-        className='h-full gap-0 overflow-hidden py-0'
+        className='gap-0 overflow-hidden py-0 lg:h-full'
       >
         <CardHeader className='border-b p-3 !pb-3 sm:p-5 sm:!pb-5'>
           <Skeleton className='h-6 w-40' />
@@ -245,8 +261,8 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
       description={t('Manage your active and past subscriptions')}
       icon={<ListChecks className='h-4 w-4' />}
       disableHoverEffect
-      className='flex h-full flex-col'
-      contentClassName='flex min-h-0 flex-1 flex-col gap-3'
+      className='flex flex-col lg:h-full'
+      contentClassName='flex flex-col gap-3 lg:min-h-0 lg:flex-1'
       action={
         <div className='flex items-center gap-2'>
           <Button
@@ -271,8 +287,8 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
         </div>
       }
     >
-      <div className='relative min-h-0 flex-1'>
-        <div className='absolute inset-0 space-y-3 overflow-y-auto pr-1'>
+      <div className='relative min-h-0 lg:flex-1'>
+        <div className='space-y-3 lg:absolute lg:inset-0 lg:overflow-y-auto lg:pr-1'>
           {visibleSubscriptions.map((sub) => {
             const subscription = sub.subscription
             const providerSubscription = sub.provider_subscription
@@ -280,7 +296,13 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
             const usedAmount = Number(subscription?.amount_used || 0)
             const remainAmount =
               totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
-            const planTitle = planTitleMap.get(subscription?.plan_id) || ''
+            const planTitle =
+              subscription?.plan_id > 0
+                ? planTitleMap.get(subscription.plan_id) || ''
+                : subscription?.custom_name || t('Custom assignment')
+            const allowedModels = parseDisplayModels(
+              subscription?.allowed_models || ''
+            )
             const hasReset =
               planHasResetMap.get(subscription?.plan_id) ??
               (subscription?.next_reset_time ?? 0) > 0
@@ -435,7 +457,14 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
                       </TooltipContent>
                     </Tooltip>
                   ) : (
-                    t('Unlimited')
+                    <Tooltip>
+                      <TooltipTrigger render={<span className='cursor-help' />}>
+                        {t('Unlimited')} · {t('Used')} {formatQuota(usedAmount)}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t('Raw Quota')}: {t('Used')} {usedAmount}
+                      </TooltipContent>
+                    </Tooltip>
                   )}
                   {totalAmount > 0 && (
                     <span className='ml-2'>
@@ -446,6 +475,18 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
                 {hasReset && estimatedTotal && (
                   <div className='text-muted-foreground mt-1'>
                     {t('Total Quota')}: ≈ {formatQuota(estimatedTotal)}
+                  </div>
+                )}
+                {allowedModels.length > 0 && (
+                  <div className='mt-2 flex flex-wrap items-center gap-1'>
+                    <span className='text-muted-foreground'>
+                      {t('Allowed Models')}:
+                    </span>
+                    {allowedModels.map((m) => (
+                      <Badge key={m} variant='outline' className='text-[10px]'>
+                        {m}
+                      </Badge>
+                    ))}
                   </div>
                 )}
                 {totalAmount > 0 && isActive && (

@@ -43,6 +43,7 @@ export {
   AVG_COMPLETION_TOKENS_PER_CALL,
 } from './model-value'
 export { parseDisplayModels } from './display-models'
+export { useModelOptions } from './use-model-options'
 export {
   buildPlanCardModel,
   type PlanCardModel,

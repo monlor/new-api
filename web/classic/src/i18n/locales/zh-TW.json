@@ -212,6 +212,7 @@
     "Prompt cache hit tokens": "",
     "Prompt tokens": "",
     "Reasoning Effort": "Reasoning Effort",
+    "Thinking Budget": "思考預算",
     "Request ID": "",
     "RSA 私钥 (沙盒)": "",
     "RSA 私钥 (生产)": "",

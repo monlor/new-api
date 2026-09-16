@@ -27,7 +27,11 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
-import { REVENUE_FALLBACK_COLORS, REVENUE_PROVIDER_COLORS } from '../constants'
+import {
+  REVENUE_FALLBACK_COLORS,
+  REVENUE_PROVIDER_COLORS,
+  revenueProviderLabelKey,
+} from '../constants'
 import type { RevenueProviderShare } from '../types'
 
 function providerColor(provider: string, index: number): string {
@@ -46,13 +50,16 @@ export function RevenueProviderChart(props: {
 
   const slices = useMemo(
     () =>
-      props.data.map((item, index) => ({
-        provider: item.provider || t('Unknown'),
-        money: Number(item.money) || 0,
-        count: Number(item.count) || 0,
-        percentage: Number(item.percentage) || 0,
-        fill: providerColor(item.provider, index),
-      })),
+      props.data.map((item, index) => {
+        const labelKey = revenueProviderLabelKey(item.provider)
+        return {
+          provider: labelKey ? t(labelKey) : item.provider || t('Unknown'),
+          money: Number(item.money) || 0,
+          count: Number(item.count) || 0,
+          percentage: Number(item.percentage) || 0,
+          fill: providerColor(item.provider, index),
+        }
+      }),
     [props.data, t]
   )
 
