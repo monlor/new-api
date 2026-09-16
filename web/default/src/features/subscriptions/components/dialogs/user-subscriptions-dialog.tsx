@@ -55,7 +55,12 @@ import {
   invalidateUserSubscription,
   deleteUserSubscription,
 } from '../../api'
-import { formatTimestamp, planHasReset, parseDisplayModels } from '../../lib'
+import {
+  compareSubscriptionsForDisplay,
+  formatTimestamp,
+  planHasReset,
+  parseDisplayModels,
+} from '../../lib'
 import type {
   PlanRecord,
   SubscriptionPlan,
@@ -136,28 +141,17 @@ export function UserSubscriptionsDialog(props: Props) {
 
   /**
    * Display-only ordering that mirrors the backend's billing candidate order
-   * (admin-source first, then soonest end_time) so the admin sees rows in the
-   * sequence they will actually be consumed. This is an independent
-   * client-side reimplementation — it must never be used for billing.
+   * (custom assignment, then admin-bound plans, then purchased orders, then
+   * soonest end_time) so the admin sees rows in the sequence they will
+   * actually be consumed. This is an independent client-side
+   * reimplementation — it must never be used for billing.
    */
   const sortedSubs = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const now = Date.now() / 1000
-    const isValid = (s: UserSubscription) =>
-      s.status === 'active' && s.end_time > now
-    return [...subs].sort((a, b) => {
-      const av = isValid(a.subscription)
-      const bv = isValid(b.subscription)
-      if (av !== bv) return av ? -1 : 1
-      if (av) {
-        const aAdmin = a.subscription.source === 'admin'
-        const bAdmin = b.subscription.source === 'admin'
-        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1
-        return a.subscription.end_time - b.subscription.end_time
-      }
-      // Invalid bucket: most recently expired first (not billing-relevant).
-      return b.subscription.end_time - a.subscription.end_time
-    })
+    return [...subs].sort((a, b) =>
+      compareSubscriptionsForDisplay(a.subscription, b.subscription, now)
+    )
   }, [subs])
 
   const loadData = useCallback(async () => {

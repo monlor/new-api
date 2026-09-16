@@ -43,8 +43,9 @@ const (
 	SubscriptionStatusCancelled = "cancelled"
 )
 
-// UserSubscription.Source values. Admin-assigned subscriptions are consumed
-// before every other source (see preConsumeUserSubscription).
+// UserSubscription.Source values. Consume order is custom assignment
+// (plan_id <= 0) first, then admin-bound plans, then purchased orders
+// (see sortSubscriptionsByPriority / preConsumeUserSubscription).
 const (
 	SubscriptionSourceOrder = "order"
 	SubscriptionSourceAdmin = "admin"
@@ -1069,13 +1070,27 @@ func filterSubscriptionsByModel(subs []UserSubscription, modelName string) []Use
 	return out
 }
 
-// sortSubscriptionsByPriority stably moves admin-assigned subscriptions to the
-// front, keeping the caller's existing order (end_time asc, id asc) otherwise.
+// subscriptionConsumeRank returns a lower number for higher consume priority.
+// Custom assignments (plan_id <= 0) outrank admin-bound plans, which outrank
+// purchased (order) subscriptions. Within a rank the caller keeps
+// end_time asc, id asc via sort.SliceStable.
+func subscriptionConsumeRank(sub UserSubscription) int {
+	if sub.PlanId <= 0 {
+		return 0
+	}
+	if sub.Source == SubscriptionSourceAdmin {
+		return 1
+	}
+	return 2
+}
+
+// sortSubscriptionsByPriority stably reorders by subscriptionConsumeRank,
+// keeping the caller's existing order (end_time asc, id asc) otherwise.
 // Done in Go rather than SQL because ORDER BY CASE / FIELD() is not portable
 // across SQLite, MySQL and PostgreSQL (Rule 2).
 func sortSubscriptionsByPriority(subs []UserSubscription) {
 	sort.SliceStable(subs, func(i, j int) bool {
-		return subs[i].Source == SubscriptionSourceAdmin && subs[j].Source != SubscriptionSourceAdmin
+		return subscriptionConsumeRank(subs[i]) < subscriptionConsumeRank(subs[j])
 	})
 }
 
@@ -1744,7 +1759,7 @@ func preConsumeUserSubscription(requestId string, userId int, modelName string, 
 			// Subscriptions whose whitelist excludes this model are skipped here;
 			// the caller falls back to other subscriptions / the wallet.
 			subs = filterSubscriptionsByModel(subs, modelName)
-			// Admin-assigned subscriptions are always consumed first.
+			// Custom assignments, then admin-bound plans, then purchased orders.
 			sortSubscriptionsByPriority(subs)
 			if len(subs) == 0 {
 				return errors.New("no active subscription")

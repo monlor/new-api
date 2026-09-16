@@ -23,7 +23,6 @@ import {
   parseTiersFromExpr,
   type ParsedTier,
 } from '@/features/pricing/lib/billing-expr'
-import type { UsageLog } from '../data/schema'
 import type { LogOtherData } from '../types'
 
 export { normalizeTierLabel }
@@ -147,28 +146,6 @@ export function getResponseTimeColor(
 ): 'success' | 'warning' | 'danger' {
   if (completionTokens < 100 || seconds <= 0) return getTimeColor(seconds)
   return getThroughputColor(completionTokens / seconds)
-}
-
-/**
- * Format model name with mapping indicator
- */
-export function formatModelName(log: UsageLog): {
-  name: string
-  isMapped: boolean
-  actualModel?: string
-} {
-  const other = parseLogOther(log.other)
-  const isMapped = !!(
-    other?.is_model_mapped &&
-    other?.upstream_model_name &&
-    other.upstream_model_name !== ''
-  )
-
-  return {
-    name: log.model_name,
-    isMapped,
-    actualModel: isMapped ? other.upstream_model_name : undefined,
-  }
 }
 
 /**

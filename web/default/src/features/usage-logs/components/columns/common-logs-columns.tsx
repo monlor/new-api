@@ -39,7 +39,6 @@ import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
-  formatModelName,
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getTieredBillingSummary,
@@ -540,17 +539,13 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const modelInfo = formatModelName(log)
         const other = parseLogOther(log.other)
         const reasoningEffort = other?.reasoning_effort
         const thinkingBudget = other?.thinking_budget
 
         return (
           <div className='flex w-fit items-center gap-1.5'>
-            <ModelBadge
-              modelName={modelInfo.name}
-              actualModel={modelInfo.actualModel}
-            />
+            <ModelBadge modelName={log.model_name} />
             {reasoningEffort ? (
               <ReasoningEffortBadge effort={reasoningEffort} />
             ) : thinkingBudget != null ? (

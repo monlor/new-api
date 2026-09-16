@@ -50,6 +50,7 @@ import {
   planHasReset,
   calcEstimatedTotal,
   parseDisplayModels,
+  compareSubscriptionsForDisplay,
 } from '@/features/subscriptions/lib'
 import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
 
@@ -199,21 +200,9 @@ export function MySubscriptionsCard(props: MySubscriptionsCardProps) {
   const sortedSubscriptions = useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const now = Date.now() / 1000
-    const isValid = (s: UserSubscriptionRecord['subscription']) =>
-      s?.status === 'active' && (s?.end_time || 0) > now
-    return [...allSubscriptions].sort((a, b) => {
-      const av = isValid(a.subscription)
-      const bv = isValid(b.subscription)
-      if (av !== bv) return av ? -1 : 1
-      if (av) {
-        const aAdmin = a.subscription?.source === 'admin'
-        const bAdmin = b.subscription?.source === 'admin'
-        if (aAdmin !== bAdmin) return aAdmin ? -1 : 1
-        return (a.subscription?.end_time || 0) - (b.subscription?.end_time || 0)
-      }
-      // Invalid bucket: most recently expired first (not billing-relevant).
-      return (b.subscription?.end_time || 0) - (a.subscription?.end_time || 0)
-    })
+    return [...allSubscriptions].sort((a, b) =>
+      compareSubscriptionsForDisplay(a.subscription, b.subscription, now)
+    )
   }, [allSubscriptions])
 
   // Default view: only subscriptions that ended within the last 90 days, plus
