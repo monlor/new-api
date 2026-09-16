@@ -150,15 +150,21 @@ function buildCodexAuthJson(apiKey: string): string {
   return JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
 }
 
-function buildGrokUserSettingsJson(apiKey: string, model: string): string {
-  return JSON.stringify(
-    {
-      apiKey,
-      defaultModel: model || 'grok-code-fast-1',
-    },
-    null,
-    2
-  )
+function buildGrokEnvVars(
+  apiKey: string,
+  baseUrl: string,
+  platform: CodexPlatform
+): string {
+  if (platform === 'windows') {
+    return [
+      `set XAI_API_KEY="${apiKey}"`,
+      `set GROK_XAI_API_BASE_URL="${baseUrl}"`,
+    ].join('\n')
+  }
+  return [
+    `export XAI_API_KEY="${apiKey}"`,
+    `export GROK_XAI_API_BASE_URL="${baseUrl}"`,
+  ].join('\n')
 }
 
 function buildCurlCommand(
@@ -480,7 +486,7 @@ export function UseApiKeyDialog(props: Props) {
   }
   const piConfig = buildPiModelsJson(piConfigInput)
   const piAuth = buildPiAuthJson(piConfigInput)
-  const grokUserSettings = buildGrokUserSettingsJson(apiKey, selectedModel)
+  const grokEnvVars = buildGrokEnvVars(apiKey, codexBaseUrl, grokPlatform)
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -513,16 +519,6 @@ export function UseApiKeyDialog(props: Props) {
     piPlatform === 'unix'
       ? '~/.pi/agent/auth.json'
       : '%userprofile%\\.pi\\agent\\auth.json'
-
-  const grokUserSettingsPath =
-    grokPlatform === 'unix'
-      ? '~/.grok/user-settings.json'
-      : '%userprofile%\\.grok\\user-settings.json'
-
-  const grokEnvVars =
-    grokPlatform === 'unix'
-      ? `export GROK_BASE_URL="${effectiveEndpoint}/v1"`
-      : `set GROK_BASE_URL="${effectiveEndpoint}/v1"`
 
   const claudeEnvBlockLabel =
     claudePlatform === 'unix'
@@ -801,7 +797,7 @@ export function UseApiKeyDialog(props: Props) {
         >
           <p className='text-muted-foreground py-3 text-xs'>
             {t(
-              'Save user-settings.json for the API key and default model, then set GROK_BASE_URL in your shell — Grok CLI has no config file field for the base URL.'
+              'Add the following environment variables to your terminal profile or run directly in terminal.'
             )}
           </p>
 
@@ -817,30 +813,19 @@ export function UseApiKeyDialog(props: Props) {
           <div className='space-y-4 pt-4'>
             <WarningBanner>
               {t(
-                'user-settings.json contains your API key. Do not commit it to git. GROK_BASE_URL must be set in every session, or Grok CLI will call the official xAI API instead.'
+                'If Grok CLI already has a saved login session (~/.grok/auth.json), it takes priority over XAI_API_KEY. Run "grok logout" first.'
               )}
             </WarningBanner>
 
             <FileConfigBlock
-              label={grokUserSettingsPath}
-              code={grokUserSettings}
-              lang='json'
+              label={grokPlatform === 'unix' ? 'Terminal' : 'Command Prompt'}
+              code={grokEnvVars}
+              lang='bash'
             />
-
-            <div className='space-y-1.5'>
-              <SectionLabel variant='warning'>
-                {t('Required environment variable')}
-              </SectionLabel>
-              <FileConfigBlock
-                label={grokPlatform === 'unix' ? 'Terminal' : 'Command Prompt'}
-                code={grokEnvVars}
-                lang='bash'
-              />
-            </div>
 
             <InfoBanner>
               {t(
-                'For permanent configuration, add GROK_BASE_URL to ~/.bashrc, ~/.zshrc or the corresponding profile file.'
+                'These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.'
               )}
             </InfoBanner>
           </div>
