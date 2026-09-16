@@ -226,6 +226,5 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 ## 十六、文档 (Docs)
 
 - AGENTS.md 为项目规范单一来源，CLAUDE.md 软链接指向它
-- 新增 agent-team harness 章节
 - 移除 protected-info 规则，新增 Docker Compose 开发规则
 - 本文件 (FORK_CHANGES.md)
