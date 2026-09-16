@@ -132,6 +132,7 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - OpenCode 快速导入：Use API Key 与 CC Switch 共用 `buildOpenCodeConfigParts`（`@ai-sdk/openai-compatible`、`limit.context` / `limit.output`、`model` / `small_model`）。Use API Key 输出 `opencode.json`（不含 apiKey）和官方 `auth.json`（Unix `~/.local/share/opencode/auth.json`，Windows `%userprofile%\.local\share\opencode\auth.json`，`{ type: "api", key }`）；CC Switch Config JSON 仍是带 `apiKey` 的供应商片段（顶层必须有 `npm` / `options`，并带 `model` / `small_model`），否则 live config 同步会报 invalid config structure
 - Pi 快速配置：Use API Key 弹窗新增 Pi 配置（`~/.pi/agent/models.json` 只写自定义供应商/`openai-completions`/`compat`/模型限额，API key 按官方写入 `~/.pi/agent/auth.json` 的 `{ type: "api_key", key }`；内置供应商 id 如 `openai`/`anthropic` 会加 `newapi-` 前缀避免覆盖 Pi 内置目录）
 - 创建 API Key 时自动选中第一个可用分组（开启 DefaultUseAutoGroup 且存在 auto 时仍优先 auto）
+- Grok CLI 快速配置：Use API Key 弹窗新增 Grok CLI 标签页，输出 `~/.grok/user-settings.json`（仅 `apiKey` / `defaultModel`，与上游 `UserSettings` 接口一致），并单独提示必须设置 `GROK_BASE_URL` 环境变量（Grok CLI 配置文件无 base URL 字段，只能通过环境变量覆盖默认的 xAI 官方地址）
 
 **涉及文件：** `web/default/src/routes/pricing/index.tsx`、定价/keys 相关前端组件（含 `web/default/src/features/keys/components/dialogs/{cc-switch-dialog,use-api-key-dialog}.tsx`、`web/default/src/features/keys/lib/{opencode-config,pi-config}.ts`、`web/default/src/features/keys/lib/api-key-form.ts`、`web/default/src/features/keys/components/api-keys-mutate-drawer.tsx`）、`constant/context_key.go`、`common/constants.go`
 
@@ -271,5 +272,6 @@ git diff --name-only upstream/main..HEAD | grep -v '^web/'   # 后端改动文�
 - 选路缓存路径在 `channelSyncLock` 外读 usage；DB 路径与缓存路径共用 `pickChannelByWeightAndLoad`
 - 等待挂在实际打上游前（Relay 重试循环 / Task 提交 / Midjourney 提交与换脸），渠道测试与内容审查不计
 - 超时 429 写入系统拒绝日志 `SystemLogTypeRateLimit`（reason=`channel_rate_limit_exceeded`），并带上渠道 ID / 模型名
+- 等待中的请求按到达顺序（FIFO）排队重试，而非各自随机抖动后重试抢槽位：进程内用内存队列（`queue_memory.go`），Redis 模式用跨实例队列（`queue_redis.go` + `lua/queue_poll.lua`，lease key TTL 兜底崩溃场景）
 
 **涉及文件：** `common/chrate/`、`dto/channel_settings.go`、`model/channel.go`、`model/channel_cache.go`、`model/ability.go`、`model/channel_select.go`、`service/channel_rate_limit.go`、`controller/relay.go`、`relay/relay_task.go`、`relay/mjproxy_handler.go`、`constant/midjourney.go`、`types/error.go`、`i18n/keys.go`、`i18n/locales/*.yaml`、`web/default/src/features/channels/lib/channel-form.ts`、`web/default/src/features/channels/types.ts`、`web/default/src/features/channels/components/drawers/channel-mutate-drawer.tsx`、`web/default/src/i18n/locales/*.json`

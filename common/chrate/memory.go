@@ -1,6 +1,7 @@
 package chrate
 
 import (
+	"container/list"
 	"sync"
 	"time"
 )
@@ -64,4 +65,8 @@ func ResetMemoryForTest() {
 	memMu.Lock()
 	memWindows = make(map[int]*memWindow)
 	memMu.Unlock()
+
+	memQueueMu.Lock()
+	memQueues = make(map[int]*list.List)
+	memQueueMu.Unlock()
 }

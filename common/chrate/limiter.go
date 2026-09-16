@@ -22,7 +22,6 @@ const (
 	keyPrefix         = "chrl:"
 	defaultDurationMs = 1000
 	minSleep          = 10 * time.Millisecond
-	maxJitter         = 40 * time.Millisecond
 	scriptLoadTimeout = 5 * time.Second
 )
 
@@ -220,8 +219,9 @@ func Allow(ctx context.Context, channelId int, count int, durationMs int) (bool,
 	return res.allowed, res.retryAfter, nil
 }
 
-// WaitAllow tries to take a slot immediately, then retries until a slot is taken,
-// ctx is done, or waitTimeout elapses. The first attempt is not bound by waitTimeout.
+// WaitAllow tries to take a slot immediately, then queues in arrival order
+// (FIFO) and retries until a slot is taken, ctx is done, or waitTimeout
+// elapses. The first attempt is not bound by waitTimeout or the queue.
 // waitTimeout <= 0 waits until ctx is cancelled.
 func WaitAllow(ctx context.Context, channelId int, count int, durationMs int, waitTimeout time.Duration) error {
 	if count <= 0 {
@@ -246,6 +246,15 @@ func WaitAllow(ctx context.Context, channelId int, count int, durationMs int, wa
 	}
 	defer cancel()
 
+	release, err := acquireTurn(deadlineCtx, channelId)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return &LimitError{RetryAfter: retryAfter}
+		}
+		return err
+	}
+	defer release()
+
 	for {
 		if err := sleepCtx(deadlineCtx, sleepForRetry(retryAfter)); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -269,20 +278,30 @@ func WaitAllow(ctx context.Context, channelId int, count int, durationMs int, wa
 	}
 }
 
-func sleepForRetry(retryAfter time.Duration) time.Duration {
-	sleepFor := retryAfter
-	if sleepFor < minSleep {
-		sleepFor = minSleep
+// acquireTurn blocks until the caller is at the head of the per-channel FIFO
+// wait queue (memory-local or cross-instance Redis, matching the counting
+// backend) or ctx is done.
+func acquireTurn(ctx context.Context, channelId int) (release func(), err error) {
+	if common.RedisEnabled && common.RDB != nil {
+		return acquireRedisTurn(ctx, channelId)
 	}
-	return sleepFor + jitter()
+	turn, release := acquireMemoryTurn(channelId)
+	select {
+	case <-turn:
+		return release, nil
+	case <-ctx.Done():
+		release()
+		return func() {}, ctx.Err()
+	}
 }
 
-func jitter() time.Duration {
-	maxMs := int(maxJitter / time.Millisecond)
-	if maxMs <= 0 {
-		return 0
+// sleepForRetry is only ever invoked by the current queue-turn holder, so no
+// anti-thundering-herd jitter is needed.
+func sleepForRetry(retryAfter time.Duration) time.Duration {
+	if retryAfter < minSleep {
+		return minSleep
 	}
-	return time.Duration(common.GetRandomInt(maxMs)) * time.Millisecond
+	return retryAfter
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {

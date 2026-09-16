@@ -3,6 +3,7 @@ package chrate
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 )
@@ -105,6 +106,54 @@ func TestWaitAllowFirstAttemptIgnoresWaitTimeout(t *testing.T) {
 	}
 	if ok != 1 || limited != 1 {
 		t.Fatalf("ok=%d limited=%d, want 1/1", ok, limited)
+	}
+}
+
+func TestWaitAllowFIFOOrder(t *testing.T) {
+	ResetMemoryForTest()
+	ctx := context.Background()
+	id := 9006
+
+	// occupy the single slot for long enough that every waiter below is
+	// guaranteed to be queued (rather than racing the window's own expiry)
+	// before the slot is released. Each queued waiter must then wait out up
+	// to `waiters` sequential windows, so waitTimeout must cover that chain.
+	const windowMs = 80
+	if err := WaitAllow(ctx, id, 1, windowMs, time.Second); err != nil {
+		t.Fatalf("occupy: %v", err)
+	}
+
+	const waiters = 5
+	const waitTimeout = (waiters + 2) * windowMs * time.Millisecond
+	order := make(chan int, waiters)
+	var started sync.WaitGroup
+	started.Add(waiters)
+	for i := 0; i < waiters; i++ {
+		i := i
+		go func() {
+			started.Done()
+			// stagger arrival so queue order is deterministic; each waiter
+			// enters WaitAllow (and thus the FIFO queue) strictly after the
+			// previous one, and all of them well before windowMs elapses.
+			time.Sleep(time.Duration(i) * 10 * time.Millisecond)
+			if err := WaitAllow(ctx, id, 1, windowMs, waitTimeout); err != nil {
+				t.Errorf("waiter %d: %v", i, err)
+				return
+			}
+			order <- i
+		}()
+	}
+	started.Wait()
+
+	for i := 0; i < waiters; i++ {
+		select {
+		case got := <-order:
+			if got != i {
+				t.Fatalf("grant order = %d, want %d (queue not FIFO)", got, i)
+			}
+		case <-time.After(waitTimeout + time.Second):
+			t.Fatalf("timed out waiting for waiter %d", i)
+		}
 	}
 }
 
