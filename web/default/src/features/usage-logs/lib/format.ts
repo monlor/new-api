@@ -301,6 +301,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'user.topup_complete': 'Completed top-up order for the user',
   'user.reset_passkey': 'Reset the user passkey',
   'user.oauth_unbind': 'Removed an OAuth binding for the user',
+  'user.manage_batch': 'Performed a batch user management action',
   // User subscriptions
   'user_subscription.admin_edit':
     'Edited user subscription (ID: {{subscription_id}})',
@@ -309,6 +310,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'option.payment_compliance': 'Confirmed payment compliance',
   'option.reset_ratio': 'Reset model ratios',
   'option.clear_affinity_cache': 'Cleared channel affinity cache',
+  'option.migrate_console_setting': 'Migrated console settings',
   // Custom OAuth
   'custom_oauth.create': 'Created a custom OAuth provider',
   'custom_oauth.update': 'Updated a custom OAuth provider',
@@ -317,6 +319,7 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'performance.clear_disk_cache': 'Cleared disk cache',
   'performance.gc': 'Triggered garbage collection',
   'performance.clear_logs': 'Cleared log files',
+  'performance.reset_stats': 'Reset performance statistics',
   // Channel
   'channel.create': 'Created channel {{name}} (type {{type}}, count {{count}})',
   'channel.update': 'Updated channel {{name}} (ID: {{id}})',
@@ -336,6 +339,13 @@ const AUDIT_TEMPLATES: Record<string, string> = {
     'Applied upstream model changes to channel (ID: {{id}})',
   'channel.upstream_apply_all':
     'Applied upstream model changes to {{count}} channels',
+  'channel.fix_abilities': 'Fixed channel abilities',
+  'channel.codex_refresh': 'Refreshed Codex credential for channel {{id}}',
+  'channel.ollama_pull': 'Pulled an Ollama model',
+  'channel.ollama_delete': 'Deleted an Ollama model',
+  'channel.upstream_detect': 'Detected upstream model updates',
+  'channel.upstream_detect_all':
+    'Detected upstream model updates for all channels',
   // Redemption codes
   'redemption.create':
     'Created {{count}} redemption codes named {{name}} ({{quota}} each)',
@@ -359,10 +369,24 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'deployment.create': 'Created a deployment',
   'deployment.update': 'Updated a deployment',
   'deployment.delete': 'Deleted a deployment',
+  'deployment.rename': 'Renamed a deployment',
+  'deployment.extend': 'Extended a deployment',
   // Subscriptions
   'subscription.plan_create': 'Created a subscription plan',
   'subscription.plan_update': 'Updated a subscription plan',
+  'subscription.plan_status': 'Updated a subscription plan status',
+  'subscription.plan_sync': 'Synced a subscription plan',
   'subscription.bind': 'Bound a subscription',
+  'subscription.user_create': 'Created a user subscription',
+  'subscription.user_invalidate': 'Invalidated a user subscription',
+  'subscription.user_delete': 'Deleted a user subscription',
+  'option.waffo_pancake_catalog': 'Loaded Waffo Pancake catalog',
+  'option.waffo_pancake_pair': 'Paired a Waffo Pancake store',
+  'option.waffo_pancake_save': 'Saved Waffo Pancake settings',
+  'option.waffo_pancake_subscription_product':
+    'Created a Waffo Pancake subscription product',
+  'option.waffo_pancake_subscription_product_options':
+    'Loaded Waffo Pancake subscription products',
   // Logs
   'log.clear': 'Cleared historical logs',
   'log.clear_content_review':

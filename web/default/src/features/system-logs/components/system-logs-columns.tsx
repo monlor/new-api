@@ -21,6 +21,10 @@ import { useTranslation } from 'react-i18next'
 import { formatTimestampToDate } from '@/lib/format'
 import { TruncatedCell } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import {
+  parseLogOther,
+  renderAuditContent,
+} from '@/features/usage-logs/lib/format'
 import { SYSTEM_LOG_TYPES } from '../constants'
 import type { SystemLog } from '../types'
 
@@ -70,7 +74,11 @@ export function useSystemLogsColumns(): ColumnDef<SystemLog>[] {
       accessorKey: 'content',
       header: t('Content'),
       cell: ({ row }) => {
-        const content = row.original.content?.trim()
+        const localized = renderAuditContent(
+          parseLogOther(row.original.other),
+          t
+        )
+        const content = (localized ?? row.original.content)?.trim()
         if (!content) {
           return <span className='text-muted-foreground/60 text-xs'>-</span>
         }
