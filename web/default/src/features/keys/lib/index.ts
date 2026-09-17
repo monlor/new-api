@@ -34,6 +34,34 @@ export {
   isChatModel,
 } from './chat-models'
 export {
+  DEFAULT_MODEL_CONTEXT,
+  DEFAULT_MODEL_OUTPUT,
+  GPT_LONG_CONTEXT,
+  getModelLimit,
+  matchModelLimit,
+  type ModelLimit,
+} from './model-limits'
+export {
+  modelSupportsReasoning,
+  modelSupportsVision,
+  normalizeCompatBaseUrl,
+  uniqueModels,
+} from './model-meta'
+export {
+  GROK_DEFAULT_EFFORTS,
+  GROK_DEFAULT_REASONING_EFFORT,
+  GROK_GPT_EFFORTS,
+  buildGrokConfigToml,
+  buildGrokEnvVars,
+  grokConfigTomlPath,
+  grokEffortsForModel,
+  resolveGrokModel,
+  resolveGrokModels,
+  type GrokConfigInput,
+  type GrokModelOverride,
+  type GrokPlatform,
+} from './grok-config'
+export {
   OPENCODE_DEFAULT_CONTEXT,
   OPENCODE_DEFAULT_OUTPUT,
   OPENCODE_NPM_OPENAI_COMPATIBLE,
@@ -42,8 +70,6 @@ export {
   buildOpenCodeConfigParts,
   buildOpenCodeModelEntry,
   buildOpenCodeProviderSettings,
-  getOpenCodeModelLimit,
-  normalizeOpenCodeBaseUrl,
   pickOpenCodeDefaultModel,
   toOpenCodeAuthProviderId,
   toOpenCodeProviderId,
@@ -51,14 +77,12 @@ export {
   type OpenCodeConfigInput,
   type OpenCodeConfigParts,
   type OpenCodeModelEntry,
-  type OpenCodeModelLimit,
 } from './opencode-config'
 export {
   PI_API_OPENAI_COMPLETIONS,
   buildPiAuthJson,
   buildPiModelsJson,
   buildPiProvider,
-  modelSupportsReasoning,
   toPiAuthProviderId,
   toPiProviderId,
   type PiConfigInput,

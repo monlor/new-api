@@ -24,7 +24,6 @@ import {
   buildPiModelEntry,
   buildPiModelsJson,
   buildPiProvider,
-  modelSupportsReasoning,
   toPiProviderId,
 } from './pi-config.ts'
 
@@ -36,16 +35,6 @@ describe('toPiProviderId', () => {
     assert.equal(toPiProviderId('MiniMax'), 'newapi-minimax')
     assert.equal(toPiProviderId('ZAI'), 'newapi-zai')
     assert.equal(toPiProviderId('GitHub Copilot'), 'newapi-github-copilot')
-  })
-})
-
-describe('modelSupportsReasoning', () => {
-  test('marks common reasoning families and leaves gpt-4o off', () => {
-    assert.equal(modelSupportsReasoning('claude-sonnet-4-5'), true)
-    assert.equal(modelSupportsReasoning('gpt-5.4'), true)
-    assert.equal(modelSupportsReasoning('o3-mini'), true)
-    assert.equal(modelSupportsReasoning('gpt-4o'), false)
-    assert.equal(modelSupportsReasoning('deepseek-chat'), false)
   })
 })
 
@@ -96,7 +85,7 @@ describe('buildPiModelsJson', () => {
       name: 'claude-sonnet-4-5',
       reasoning: true,
       input: ['text', 'image'],
-      contextWindow: 200_000,
+      contextWindow: 1_000_000,
       maxTokens: 64_000,
     })
     assert.equal(provider.models[1].contextWindow, 128_000)

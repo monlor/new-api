@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getModelLimit } from './model-limits'
 import {
-  getOpenCodeModelLimit,
+  modelSupportsReasoning,
   modelSupportsVision,
-  normalizeOpenCodeBaseUrl,
-  toOpenCodeProviderId,
-} from './opencode-config'
+  normalizeCompatBaseUrl,
+  uniqueModels,
+} from './model-meta'
+import { toOpenCodeProviderId } from './opencode-config'
 
 // Pi custom-provider defaults: https://pi.dev/docs/latest/models
 export const PI_API_OPENAI_COMPLETIONS = 'openai-completions'
@@ -88,33 +90,13 @@ export type PiConfigInput = {
   models: string[]
 }
 
-function uniqueModels(models: string[]): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const model of models) {
-    const id = model.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
-  }
-  return out
-}
-
 export function toPiProviderId(name: string): string {
   const slug = toOpenCodeProviderId(name)
   return PI_RESERVED_PROVIDER_IDS.has(slug) ? `newapi-${slug}` : slug
 }
 
-export function modelSupportsReasoning(model: string): boolean {
-  const id = model.trim().toLowerCase().replace(/_/g, '-')
-  if (!id) return false
-  return /claude|gpt-5|(^|[/:-])o[1-4]|gemini|grok|qwq|\br1\b|deepseek-v4|kimi|glm-5/.test(
-    id
-  )
-}
-
 export function buildPiModelEntry(model: string): PiModelInput {
-  const limit = getOpenCodeModelLimit(model)
+  const limit = getModelLimit(model)
   return {
     id: model,
     name: model,
@@ -134,7 +116,7 @@ export function buildPiProvider(input: PiConfigInput): Record<string, unknown> {
     name:
       input.providerName ||
       toPiProviderId(input.providerId || input.providerName),
-    baseUrl: normalizeOpenCodeBaseUrl(input.baseUrl),
+    baseUrl: normalizeCompatBaseUrl(input.baseUrl),
     api: PI_API_OPENAI_COMPLETIONS,
     compat: {
       supportsDeveloperRole: false,

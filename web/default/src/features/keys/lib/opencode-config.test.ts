@@ -19,85 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { endpointMapFromPricing } from './chat-models.ts'
+import { modelSupportsVision, normalizeCompatBaseUrl } from './model-meta.ts'
 import {
-  OPENCODE_DEFAULT_CONTEXT,
-  OPENCODE_DEFAULT_OUTPUT,
   OPENCODE_NPM_OPENAI_COMPATIBLE,
   buildOpenCodeAuthJson,
   buildOpenCodeConfig,
   buildOpenCodeConfigParts,
   buildOpenCodeProviderSettings,
   filterChatModels,
-  getOpenCodeModelLimit,
   isChatModel,
-  modelSupportsVision,
-  normalizeOpenCodeBaseUrl,
   pickOpenCodeDefaultModel,
   pickOpenCodeSmallModel,
   openCodeAuthJsonPath,
   toOpenCodeProviderId,
 } from './opencode-config.ts'
-
-describe('getOpenCodeModelLimit', () => {
-  test('uses Claude family context and output limits', () => {
-    assert.deepEqual(getOpenCodeModelLimit('claude-sonnet-4-5'), {
-      context: 200_000,
-      output: 64_000,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('anthropic/claude-opus-4-6'), {
-      context: 200_000,
-      output: 32_000,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('claude-haiku-4-5'), {
-      context: 200_000,
-      output: 64_000,
-    })
-  })
-
-  test('uses GPT family limits including long-context GPT-5.4', () => {
-    assert.deepEqual(getOpenCodeModelLimit('gpt-4o'), {
-      context: 128_000,
-      output: 16_384,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('gpt-5.2-codex'), {
-      context: 400_000,
-      output: 128_000,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('gpt-5.4'), {
-      context: 1_050_000,
-      output: 128_000,
-    })
-  })
-
-  test('uses Gemini 1M context and parses explicit size from the model id', () => {
-    assert.deepEqual(getOpenCodeModelLimit('gemini-2.5-pro'), {
-      context: 1_048_576,
-      output: 65_536,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('local-qwen-128k'), {
-      context: 128_000,
-      output: 32_000,
-    })
-  })
-
-  test('falls back to OpenCode catalog defaults for unknown models', () => {
-    assert.deepEqual(getOpenCodeModelLimit('my-custom-coder'), {
-      context: OPENCODE_DEFAULT_CONTEXT,
-      output: OPENCODE_DEFAULT_OUTPUT,
-    })
-  })
-
-  test('does not treat gpt-4o as an o-series model', () => {
-    assert.deepEqual(getOpenCodeModelLimit('gpt-4o-mini'), {
-      context: 128_000,
-      output: 16_384,
-    })
-    assert.deepEqual(getOpenCodeModelLimit('o3-mini'), {
-      context: 200_000,
-      output: 100_000,
-    })
-  })
-})
 
 describe('buildOpenCodeConfig', () => {
   test('builds an OpenAI-compatible provider with per-model limits', () => {
@@ -149,7 +84,7 @@ describe('buildOpenCodeConfig', () => {
     assert.equal(parsed.provider['new-api'].options.apiKey, undefined)
     assert.equal(
       parsed.provider['new-api'].models['claude-sonnet-4-5'].limit.context,
-      200_000
+      1_000_000
     )
     assert.equal(
       parsed.provider['new-api'].models['gpt-4o'].limit.context,
@@ -167,7 +102,7 @@ describe('buildOpenCodeConfig', () => {
 
   test('does not duplicate /v1 on the base URL', () => {
     assert.equal(
-      normalizeOpenCodeBaseUrl('https://api.example.com/v1/'),
+      normalizeCompatBaseUrl('https://api.example.com/v1/'),
       'https://api.example.com/v1'
     )
   })
@@ -223,7 +158,7 @@ describe('buildOpenCodeConfig', () => {
       'gpt-5.2-chat-latest',
       'gpt-5.6-luna',
     ])
-    assert.equal(models['claude-sonnet-4-5'].limit.context, 200_000)
+    assert.equal(models['claude-sonnet-4-5'].limit.context, 1_000_000)
     assert.equal(models['gpt-5.2-chat-latest'].limit.context, 400_000)
   })
 

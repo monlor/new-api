@@ -45,6 +45,11 @@ import {
 import { Dialog } from '@/components/dialog'
 import { useChatModels } from '../../hooks/use-chat-models'
 import {
+  buildGrokConfigToml,
+  buildGrokEnvVars,
+  grokConfigTomlPath,
+} from '../../lib/grok-config'
+import {
   buildOpenCodeAuthJson,
   buildOpenCodeConfig,
   openCodeAuthJsonPath,
@@ -148,23 +153,6 @@ function buildCodexConfigToml(baseUrl: string, model: string): string {
 
 function buildCodexAuthJson(apiKey: string): string {
   return JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
-}
-
-function buildGrokEnvVars(
-  apiKey: string,
-  baseUrl: string,
-  platform: CodexPlatform
-): string {
-  if (platform === 'windows') {
-    return [
-      `set XAI_API_KEY="${apiKey}"`,
-      `set GROK_XAI_API_BASE_URL="${baseUrl}"`,
-    ].join('\n')
-  }
-  return [
-    `export XAI_API_KEY="${apiKey}"`,
-    `export GROK_XAI_API_BASE_URL="${baseUrl}"`,
-  ].join('\n')
 }
 
 function buildCurlCommand(
@@ -486,7 +474,16 @@ export function UseApiKeyDialog(props: Props) {
   }
   const piConfig = buildPiModelsJson(piConfigInput)
   const piAuth = buildPiAuthJson(piConfigInput)
+  const grokModels = Array.from(
+    new Set([selectedModel, ...chatModels].filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b))
   const grokEnvVars = buildGrokEnvVars(apiKey, codexBaseUrl, grokPlatform)
+  const grokConfigToml = buildGrokConfigToml({
+    baseUrl: effectiveEndpoint,
+    defaultModel: selectedModel,
+    models: grokModels,
+  })
+  const grokConfigPath = grokConfigTomlPath(grokPlatform)
 
   const claudeSettingsPath =
     claudePlatform === 'unix'
@@ -568,23 +565,26 @@ export function UseApiKeyDialog(props: Props) {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className='bg-muted/60 flex h-auto flex-wrap gap-1 rounded-lg p-1'>
-          <TabsTrigger value='claude-code' className='h-7 px-3 text-xs'>
+        <TabsList className='bg-muted/60 flex h-auto w-full flex-wrap justify-start gap-1 rounded-lg p-1 group-data-horizontal/tabs:h-auto'>
+          <TabsTrigger
+            value='claude-code'
+            className='h-7 flex-none px-3 text-xs'
+          >
             Claude Code
           </TabsTrigger>
-          <TabsTrigger value='codex' className='h-7 px-3 text-xs'>
+          <TabsTrigger value='codex' className='h-7 flex-none px-3 text-xs'>
             Codex CLI
           </TabsTrigger>
-          <TabsTrigger value='opencode' className='h-7 px-3 text-xs'>
+          <TabsTrigger value='opencode' className='h-7 flex-none px-3 text-xs'>
             OpenCode
           </TabsTrigger>
-          <TabsTrigger value='pi' className='h-7 px-3 text-xs'>
+          <TabsTrigger value='pi' className='h-7 flex-none px-3 text-xs'>
             Pi
           </TabsTrigger>
-          <TabsTrigger value='grok' className='h-7 px-3 text-xs'>
+          <TabsTrigger value='grok' className='h-7 flex-none px-3 text-xs'>
             Grok CLI
           </TabsTrigger>
-          <TabsTrigger value='curl' className='h-7 px-3 text-xs'>
+          <TabsTrigger value='curl' className='h-7 flex-none px-3 text-xs'>
             cURL
           </TabsTrigger>
         </TabsList>
@@ -770,16 +770,8 @@ export function UseApiKeyDialog(props: Props) {
               )}
             </WarningBanner>
 
-            <FileConfigBlock
-              label={piModelsPath}
-              code={piConfig}
-              lang='json'
-            />
-            <FileConfigBlock
-              label={piAuthPath}
-              code={piAuth}
-              lang='json'
-            />
+            <FileConfigBlock label={piModelsPath} code={piConfig} lang='json' />
+            <FileConfigBlock label={piAuthPath} code={piAuth} lang='json' />
 
             <InfoBanner>
               {t(
@@ -797,7 +789,7 @@ export function UseApiKeyDialog(props: Props) {
         >
           <p className='text-muted-foreground py-3 text-xs'>
             {t(
-              'Add the following environment variables to your terminal profile or run directly in terminal.'
+              'Save ~/.grok/config.toml. Environment variables hold the API key. config.toml sets the endpoint, context window, and reasoning effort for known chat models. Models without a known family are skipped.'
             )}
           </p>
 
@@ -823,9 +815,15 @@ export function UseApiKeyDialog(props: Props) {
               lang='bash'
             />
 
+            <FileConfigBlock
+              label={grokConfigPath}
+              code={grokConfigToml}
+              lang='toml'
+            />
+
             <InfoBanner>
               {t(
-                'These environment variables take effect in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc or the corresponding profile file.'
+                'Merge this into an existing ~/.grok/config.toml instead of overwriting other settings. GPT models include extra effort levels such as ultra.'
               )}
             </InfoBanner>
           </div>

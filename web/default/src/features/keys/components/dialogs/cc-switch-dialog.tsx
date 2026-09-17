@@ -20,20 +20,20 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
-import { useSystemConfig } from '@/hooks/use-system-config'
 import { useStatus } from '@/hooks/use-status'
-import { useChatModels } from '../../hooks/use-chat-models'
-import {
-  buildOpenCodeProviderSettings,
-  normalizeOpenCodeBaseUrl,
-  pickOpenCodeDefaultModel,
-} from '../../lib/opencode-config'
+import { useSystemConfig } from '@/hooks/use-system-config'
 import { Button } from '@/components/ui/button'
 import { ComboboxInput } from '@/components/ui/combobox-input'
 import { Label } from '@/components/ui/label'
-import { MultiSelect } from '@/components/multi-select'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Dialog } from '@/components/dialog'
+import { MultiSelect } from '@/components/multi-select'
+import { useChatModels } from '../../hooks/use-chat-models'
+import { normalizeCompatBaseUrl } from '../../lib/model-meta'
+import {
+  buildOpenCodeProviderSettings,
+  pickOpenCodeDefaultModel,
+} from '../../lib/opencode-config'
 
 const APP_CONFIGS = {
   claude: {
@@ -90,7 +90,7 @@ function buildCCSwitchURL(
 ): string {
   const endpoint =
     app === 'codex' || app === 'opencode'
-      ? normalizeOpenCodeBaseUrl(apiEndpoint)
+      ? normalizeCompatBaseUrl(apiEndpoint)
       : apiEndpoint
   const params = new URLSearchParams()
   params.set('resource', 'provider')
@@ -457,9 +457,7 @@ export function CCSwitchDialog(props: Props) {
                 maxVisibleChips={6}
               />
               <p className='text-muted-foreground text-xs'>
-                {t(
-                  'Image, embedding, video, and audio models are excluded.'
-                )}
+                {t('Image, embedding, video, and audio models are excluded.')}
               </p>
             </div>
 

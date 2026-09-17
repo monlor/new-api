@@ -16,23 +16,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  DEFAULT_MODEL_CONTEXT,
+  DEFAULT_MODEL_OUTPUT,
+  getModelLimit,
+  normalizeModelId,
+  type ModelLimit,
+} from './model-limits'
+import {
+  modelSupportsVision,
+  normalizeCompatBaseUrl,
+  uniqueModels,
+} from './model-meta'
 
 // OpenCode custom-provider defaults from official docs:
 // https://opencode.ai/docs/providers/ and https://opencode.ai/docs/models/
 // Unknown catalog models assume 200k context / 32k output.
-export const OPENCODE_DEFAULT_CONTEXT = 200_000
-export const OPENCODE_DEFAULT_OUTPUT = 32_000
+export const OPENCODE_DEFAULT_CONTEXT = DEFAULT_MODEL_CONTEXT
+export const OPENCODE_DEFAULT_OUTPUT = DEFAULT_MODEL_OUTPUT
 export const OPENCODE_NPM_OPENAI_COMPATIBLE = '@ai-sdk/openai-compatible'
 export const OPENCODE_CONFIG_SCHEMA = 'https://opencode.ai/config.json'
 
-export type OpenCodeModelLimit = {
-  context: number
-  output: number
-}
-
 export type OpenCodeModelEntry = {
   name: string
-  limit: OpenCodeModelLimit
+  limit: ModelLimit
   capabilities: {
     tools: boolean
     input: Array<'text' | 'image'>
@@ -56,172 +63,6 @@ export {
   isChatModel,
 } from './chat-models'
 
-type LimitRule = {
-  test: (id: string) => boolean
-  limit: OpenCodeModelLimit
-}
-
-function normalizeModelId(model: string): string {
-  return model.trim().toLowerCase().replace(/_/g, '-')
-}
-
-function modelLeaf(id: string): string {
-  const slash = id.lastIndexOf('/')
-  const colon = id.lastIndexOf(':')
-  const sep = Math.max(slash, colon)
-  return sep >= 0 ? id.slice(sep + 1) : id
-}
-
-function parseLimitFromId(id: string): OpenCodeModelLimit | null {
-  const match = modelLeaf(id).match(/(?:^|[-_])(\d+(?:\.\d+)?)(k|m)(?:[-_]|$)/i)
-  if (!match) return null
-  const n = Number(match[1])
-  if (!Number.isFinite(n) || n <= 0) return null
-  const unit = match[2].toLowerCase()
-  const context = Math.round(n * (unit === 'm' ? 1_000_000 : 1_000))
-  if (context < 1_000) return null
-  return {
-    context,
-    output: Math.min(OPENCODE_DEFAULT_OUTPUT, context),
-  }
-}
-
-// More specific rules first. Context/output follow public model cards and
-// OpenCode provider examples (limit.context / limit.output).
-const LIMIT_RULES: LimitRule[] = [
-  {
-    test: (id) => /claude.*haiku/.test(id),
-    limit: { context: 200_000, output: 64_000 },
-  },
-  {
-    test: (id) => /claude.*sonnet/.test(id),
-    limit: { context: 200_000, output: 64_000 },
-  },
-  {
-    test: (id) => /claude.*opus/.test(id),
-    limit: { context: 200_000, output: 32_000 },
-  },
-  {
-    test: (id) => /claude/.test(id),
-    limit: { context: 200_000, output: 32_000 },
-  },
-  {
-    test: (id) => /gpt-5\.[4-9]/.test(id),
-    limit: { context: 1_050_000, output: 128_000 },
-  },
-  {
-    test: (id) =>
-      /gpt-5/.test(id) || /(^|[-/:])codex/.test(id) || /codex$/.test(id),
-    limit: { context: 400_000, output: 128_000 },
-  },
-  {
-    test: (id) => /gpt-4\.1/.test(id),
-    limit: { context: 1_047_576, output: 32_768 },
-  },
-  {
-    test: (id) => /gpt-4o/.test(id),
-    limit: { context: 128_000, output: 16_384 },
-  },
-  {
-    test: (id) => /gpt-4-turbo|gpt-4\.0|gpt-4-0125|gpt-4-1106/.test(id),
-    limit: { context: 128_000, output: 4_096 },
-  },
-  {
-    test: (id) => /(^|[/:-])o[1-4](-|$)|(^|[/:-])o3/.test(id),
-    limit: { context: 200_000, output: 100_000 },
-  },
-  {
-    test: (id) => /gemini/.test(id),
-    limit: { context: 1_048_576, output: 65_536 },
-  },
-  {
-    test: (id) => /deepseek.*v4|deepseek-v4/.test(id),
-    limit: { context: 163_840, output: 32_000 },
-  },
-  {
-    test: (id) => /deepseek/.test(id),
-    limit: { context: 128_000, output: 8_192 },
-  },
-  {
-    test: (id) => /glm-5|glm-4\.[5-9]/.test(id),
-    limit: { context: 202_752, output: 16_384 },
-  },
-  {
-    test: (id) => /glm/.test(id),
-    limit: { context: 128_000, output: 4_096 },
-  },
-  {
-    test: (id) => /kimi-k2\.5|kimi-k2-5|k2\.5/.test(id),
-    limit: { context: 256_000, output: 32_768 },
-  },
-  {
-    test: (id) => /kimi|moonshot/.test(id),
-    limit: { context: 128_000, output: 32_768 },
-  },
-  {
-    test: (id) => /qwen.*long|qwen-long/.test(id),
-    limit: { context: 1_000_000, output: 8_192 },
-  },
-  {
-    test: (id) => /qwen3|qwen2\.5|qwen-2\.5/.test(id),
-    limit: { context: 128_000, output: 16_384 },
-  },
-  {
-    test: (id) => /qwen/.test(id),
-    limit: { context: 32_768, output: 8_192 },
-  },
-  {
-    test: (id) => /grok/.test(id),
-    limit: { context: 256_000, output: 32_768 },
-  },
-  {
-    test: (id) => /minimax|abab/.test(id),
-    limit: { context: 204_800, output: 32_768 },
-  },
-  {
-    test: (id) => /mistral|codestral|devstral|pixtral/.test(id),
-    limit: { context: 128_000, output: 8_192 },
-  },
-  {
-    test: (id) => /llama-4|llama4/.test(id),
-    limit: { context: 1_000_000, output: 16_384 },
-  },
-  {
-    test: (id) => /llama-3|llama3/.test(id),
-    limit: { context: 128_000, output: 4_096 },
-  },
-]
-
-export function getOpenCodeModelLimit(model: string): OpenCodeModelLimit {
-  const id = normalizeModelId(model)
-  if (!id) {
-    return {
-      context: OPENCODE_DEFAULT_CONTEXT,
-      output: OPENCODE_DEFAULT_OUTPUT,
-    }
-  }
-
-  const fromName = parseLimitFromId(id)
-  if (fromName) return fromName
-
-  for (const rule of LIMIT_RULES) {
-    if (rule.test(id) || rule.test(modelLeaf(id))) {
-      return { ...rule.limit }
-    }
-  }
-
-  return { context: OPENCODE_DEFAULT_CONTEXT, output: OPENCODE_DEFAULT_OUTPUT }
-}
-
-export function modelSupportsVision(model: string): boolean {
-  const id = normalizeModelId(model)
-  if (!id) return false
-  if (/text-only|tts|whisper|embed|rerank/.test(id)) return false
-  return /claude|gpt-4o|gpt-4\.1|gpt-5|gemini|grok|qwen.*vl|vision|pixtral|llama-4|gpt-4-turbo/.test(
-    id
-  )
-}
-
 export function toOpenCodeProviderId(name: string): string {
   const slug = name
     .trim()
@@ -230,25 +71,6 @@ export function toOpenCodeProviderId(name: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 48)
   return slug || 'newapi'
-}
-
-export function normalizeOpenCodeBaseUrl(endpoint: string): string {
-  const trimmed = endpoint.trim().replace(/\/+$/, '')
-  if (!trimmed) return trimmed
-  if (/\/v1$/i.test(trimmed)) return trimmed
-  return `${trimmed}/v1`
-}
-
-function uniqueModels(models: string[], defaultModel: string): string[] {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const model of [defaultModel, ...models]) {
-    const id = model.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
-  }
-  return out
 }
 
 function isSmallModelCandidate(model: string, defaultModel: string): boolean {
@@ -263,7 +85,7 @@ export function pickOpenCodeSmallModel(
   models: string[],
   defaultModel: string
 ): string | undefined {
-  const unique = uniqueModels(models, '')
+  const unique = uniqueModels(models)
   for (const preferred of PREFERRED_SMALL_MODELS) {
     const match = unique.find(
       (model) =>
@@ -287,7 +109,7 @@ const DEFAULT_MODEL_RANK = [
 ]
 
 export function pickOpenCodeDefaultModel(models: string[]): string {
-  const unique = uniqueModels(models, '')
+  const unique = uniqueModels(models)
   for (const pattern of DEFAULT_MODEL_RANK) {
     const match = unique.find((model) => pattern.test(normalizeModelId(model)))
     if (match) return match
@@ -299,7 +121,7 @@ export function buildOpenCodeModelEntry(model: string): OpenCodeModelEntry {
   const vision = modelSupportsVision(model)
   return {
     name: model,
-    limit: getOpenCodeModelLimit(model),
+    limit: getModelLimit(model),
     capabilities: {
       tools: true,
       input: vision ? ['text', 'image'] : ['text'],
@@ -350,16 +172,17 @@ export function buildOpenCodeConfigParts(
   const providerId = toOpenCodeProviderId(
     input.providerId || input.providerName
   )
-  const models = uniqueModels(
-    [...input.models, input.smallModel || ''],
-    input.defaultModel || ''
-  )
+  const models = uniqueModels([
+    input.defaultModel || '',
+    ...input.models,
+    input.smallModel || '',
+  ])
   const modelEntries: Record<string, OpenCodeModelEntry> = {}
   for (const model of models) {
     modelEntries[model] = buildOpenCodeModelEntry(model)
   }
   const options = {
-    baseURL: normalizeOpenCodeBaseUrl(input.baseUrl),
+    baseURL: normalizeCompatBaseUrl(input.baseUrl),
     setCacheKey: true,
   }
   const provider: Record<string, unknown> = {
